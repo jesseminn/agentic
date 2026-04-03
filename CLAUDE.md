@@ -24,13 +24,13 @@ Derive platform-specific configs from `.agentic/`:
 | Source (in `.agentic/`) | Claude Code | Gemini CLI | Codex CLI |
 |--------|------------|------------|-----------|
 | `RULES.md` | create symlink `CLAUDE.md` | create symlink `GEMINI.md` | create symlink `AGENTS.md` |
-| `skills/` | create symlink `.claude/skills` | create symlink `.agents/skills` | create symlink `.agents/skills` |
+| `skills/` | create symlink `.claude/skills` | create symlink `.gemini/skills` | create symlink `.agents/skills` |
 | `.mcp.json` | create symlink `.mcp.json` | merge into `.gemini/settings.json#mcpServers` | translate to `.codex/config.toml` |
 | `agents/` | create symlink `.claude/agents` | create symlink `.gemini/agents` | translate to `.codex/agents/*.toml` |
 
 Also adds platform entries to root `.gitignore` (grouped under a comment header per platform).
 
-Gemini and Codex share `.agents/skills/` (the agent skills standard from agentskills.io).
+Codex uses `.agents/skills/` (the agent skills standard from agentskills.io). Gemini uses `.gemini/skills/`.
 
 ### `agentic mcp add <name> <command> [args...] [--env KEY=VALUE...]`
 
@@ -61,7 +61,7 @@ Remove derived configs for a platform:
 - Remove symlinks (not targets)
 - Remove generated files (Gemini settings.json MCP keys, Codex config.toml, Codex agents/*.toml)
 - Remove platform entries from `.gitignore` (keep entries still needed by other installed platforms)
-- Shared `.agents/skills` symlink: only remove if no other platform needs it
+- Clean up empty parent directories (`.claude/`, `.gemini/`, `.codex/`, `.agents/`)
 
 ### `agentic inject <claude|gemini|codex>`
 
@@ -129,20 +129,31 @@ Show current state:
 ### Codex CLI
 - Rules: `AGENTS.md` at project root
 - Skills: `.agents/skills/` (shared standard, auto-discovered)
-- MCP: `.codex/config.toml` → `[mcp_servers.<name>.identity]` section (translate JSON → TOML)
+- MCP: `.codex/config.toml` → `[mcp_servers.<name>]` section (translate JSON → TOML)
 - Agents: `.codex/agents/*.toml` (translate MD frontmatter → TOML: `name`, `description`, `developer_instructions`)
 
 ## Translation Details
 
 ### MCP: JSON → Codex TOML
 ```json
-{ "mcpServers": { "browsermcp": { "command": "npx", "args": ["@browsermcp/mcp@latest"] } } }
+{
+  "mcpServers": {
+    "browsermcp": {
+      "command": "npx",
+      "args": ["@browsermcp/mcp@latest"],
+      "env": { "API_KEY": "xxx" }
+    }
+  }
+}
 ```
 →
 ```toml
-[mcp_servers.browsermcp.identity]
+[mcp_servers.browsermcp]
 command = "npx"
 args = ["@browsermcp/mcp@latest"]
+
+[mcp_servers.browsermcp.env]
+API_KEY = "xxx"
 ```
 
 ### MCP: JSON → Gemini settings.json
@@ -186,13 +197,24 @@ Review the code and flag issues...
 
 ### MCP: Codex TOML → JSON (inject)
 ```toml
-[mcp_servers.browsermcp.identity]
+[mcp_servers.browsermcp]
 command = "npx"
 args = ["@browsermcp/mcp@latest"]
+
+[mcp_servers.browsermcp.env]
+API_KEY = "xxx"
 ```
 →
 ```json
-{ "mcpServers": { "browsermcp": { "command": "npx", "args": ["@browsermcp/mcp@latest"] } } }
+{
+  "mcpServers": {
+    "browsermcp": {
+      "command": "npx",
+      "args": ["@browsermcp/mcp@latest"],
+      "env": { "API_KEY": "xxx" }
+    }
+  }
+}
 ```
 
 ## Gitignore Management
@@ -205,7 +227,7 @@ Install adds entries under a comment header:
 .claude/
 ```
 
-Uninstall removes them. Shared entries (`.agents/`) are kept if another platform still needs them.
+Uninstall removes them.
 
 ## Tech Stack
 
