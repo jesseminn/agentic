@@ -3,6 +3,9 @@
   "version": "0.1.0",
   "description": "Manage cross-platform AI agent configuration from a single .agentic/ directory",
   "type": "module",
+  "files": [
+    "dist/"
+  ],
   "bin": {
     "agentic": "dist/cli.js"
   },
