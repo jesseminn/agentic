@@ -233,9 +233,22 @@ Uninstall removes them.
 
 - TypeScript, compiled with `tsc` to JS
 - `commander.js` for CLI framework
-- Zero runtime dependencies beyond commander
+- `smol-toml` for TOML parsing/generation (Codex config translation)
+- `gray-matter` for YAML frontmatter parsing (agent MD files)
 - `package.json#bin` points to `dist/cli.js`
 - Dev: `tsx src/cli.ts` for fast iteration, `npm run build` before push
+
+## npm Publishing
+
+Use `package.json#files` (whitelist) only. Never use `.npmignore` — it silently replaces `.gitignore` and fails open (forgotten files get published). With `files`, forgotten files simply don't ship.
+
+Note: when users install from a GitHub URL (`npm install github:jesseminn/agentic`), npm may show a cosmetic `gitignore-fallback` warning even with `files` set. This is a known npm false positive — `files` still correctly controls what ships.
+
+```json
+{
+  "files": ["dist/"]
+}
+```
 
 ## Project Structure
 
