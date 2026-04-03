@@ -57,10 +57,13 @@ docs: update CLAUDE.md with inject platform arg
 ## Steps
 
 1. Run `git status` and `git diff` (including untracked files) to understand all pending changes.
-2. Analyze the changes and group them into logical commits. Each commit should represent one coherent unit of change. Avoid mixing unrelated changes in a single commit.
-3. Before committing, present a summary of each planned commit to the user and ask a question about the change to confirm they understand what is being committed. Do NOT proceed until the user confirms.
-4. For each group, write a commit message following the conventional commit format above. Include a why/how body for non-trivial changes.
-5. After all commits are done, run `git log --oneline -5` and show the result so the user can confirm.
+2. **Docs consistency checks** (if any non-docs files are changed):
+   - **CLAUDE.md** (rules): verify changes don't conflict with documented rules, conventions, or architecture. If they do, flag the conflict — either the code or the rule needs to change. Ask the user which.
+   - **README.md** (documentation): verify README still accurately describes the implementation. If the changes make README stale, update README to reflect the new behavior.
+3. Analyze the changes and group them into logical commits. Each commit should represent one coherent unit of change. Avoid mixing unrelated changes in a single commit.
+4. Before committing, present a summary of each planned commit to the user and ask a question about the change to confirm they understand what is being committed. Do NOT proceed until the user confirms.
+5. For each group, write a commit message following the conventional commit format above. Include a why/how body for non-trivial changes.
+6. After all commits are done, run `git log --oneline -5` and show the result so the user can confirm.
 
 ## After Committing
 
