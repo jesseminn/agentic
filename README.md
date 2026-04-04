@@ -99,3 +99,8 @@ agentic eject
 | Skills | `.claude/skills` (symlink) | `.gemini/skills` (symlink) | `.agents/skills` (symlink) |
 | MCP | `.mcp.json` (symlink) | `.gemini/settings.json` (merge) | `.codex/config.toml` (translate) |
 | Agents | `.claude/agents` (symlink) | `.gemini/agents` (symlink) | `.codex/agents/*.toml` (translate) |
+
+## Related
+
+- [AGENTS.md](https://agents.md/) — an open standard for the `AGENTS.md` file format that guides AI coding agents. Supported by 60,000+ projects and tools like Claude Code, Copilot, Cursor. `agentic` symlinks `.agentic/RULES.md` to each platform's rules file (`CLAUDE.md`, `GEMINI.md`, `AGENTS.md`).
+- [.agents protocol](https://dotagentsprotocol.com/) — an open directory standard that consolidates AI agent config (MCP, AGENTS.md, skills, sub-agents) into a single `.agents/` directory. It aims for platforms to adopt the standard natively. `agentic` takes a different approach: work with each platform's existing config format today, using `.agentic/` as a source of truth with symlinks and translation.
