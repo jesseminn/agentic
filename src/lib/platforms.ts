@@ -19,7 +19,7 @@ export const PLATFORMS: Record<PlatformId, PlatformMapping> = {
     mcp: { type: "symlink", target: ".mcp.json" },
     agents: { type: "symlink", target: ".claude/agents" },
     gitignoreHeader: "# Claude Code (derived from .agentic/)",
-    gitignoreEntries: ["/CLAUDE.md", "/.mcp.json", ".claude/skills/", ".claude/agents/"],
+    gitignoreEntries: ["/CLAUDE.md", "/.mcp.json", ".claude/skills/", ".claude/agents/", ".claude/settings.local.json"],
   },
   gemini: {
     rules: { target: "GEMINI.md" },
