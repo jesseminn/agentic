@@ -19,7 +19,7 @@ export const PLATFORMS: Record<PlatformId, PlatformMapping> = {
     mcp: { type: "symlink", target: ".mcp.json" },
     agents: { type: "symlink", target: ".claude/agents" },
     gitignoreHeader: "# Claude Code (derived from .agentic/)",
-    gitignoreEntries: ["/CLAUDE.md", "/.mcp.json", ".claude/"],
+    gitignoreEntries: ["/CLAUDE.md", "/.mcp.json", ".claude/skills/", ".claude/agents/"],
   },
   gemini: {
     rules: { target: "GEMINI.md" },
@@ -27,7 +27,7 @@ export const PLATFORMS: Record<PlatformId, PlatformMapping> = {
     mcp: { type: "merge", target: ".gemini/settings.json" },
     agents: { type: "symlink", target: ".gemini/agents" },
     gitignoreHeader: "# Gemini CLI (derived from .agentic/)",
-    gitignoreEntries: ["/GEMINI.md", ".gemini/"],
+    gitignoreEntries: ["/GEMINI.md", ".gemini/skills/", ".gemini/agents/", ".gemini/settings.json"],
   },
   codex: {
     rules: { target: "AGENTS.md" },
@@ -35,7 +35,7 @@ export const PLATFORMS: Record<PlatformId, PlatformMapping> = {
     mcp: { type: "translate", target: ".codex/config.toml" },
     agents: { type: "translate", target: ".codex/agents" },
     gitignoreHeader: "# Codex CLI (derived from .agentic/)",
-    gitignoreEntries: ["/AGENTS.md", ".codex/", ".agents/"],
+    gitignoreEntries: ["/AGENTS.md", ".codex/config.toml", ".codex/agents/", ".agents/skills/"],
   },
 };
 
