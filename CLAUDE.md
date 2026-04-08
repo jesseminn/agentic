@@ -224,8 +224,8 @@ Install adds entries under a comment header:
 # Claude Code (derived from .agentic/)
 /CLAUDE.md
 /.mcp.json
-.claude/skills/
-.claude/agents/
+.claude/skills
+.claude/agents
 .claude/settings.local.json
 ```
 
