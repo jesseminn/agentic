@@ -21,6 +21,10 @@ export function installCommand(cwd: string, platform: PlatformId): void {
   const agenticDir = getAgenticDir(cwd);
   const mapping = PLATFORMS[platform];
 
+  // Ensure source directories exist (git doesn't track empty dirs)
+  fs.mkdirSync(path.join(agenticDir, "skills"), { recursive: true });
+  fs.mkdirSync(path.join(agenticDir, "agents"), { recursive: true });
+
   // Rules: symlink
   safeLink(
     path.join(agenticDir, "RULES.md"),
