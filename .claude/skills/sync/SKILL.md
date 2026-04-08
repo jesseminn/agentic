@@ -82,6 +82,14 @@ git push origin main
 
 Use SSH remote — never use `gh` for pushing.
 
+## Identity
+
+This repo uses a local git identity to keep personal commits separate from work:
+- `user.name`: Jesse Chen
+- `user.email`: jesseminn@gmail.com
+
+If these are ever missing or wrong, set them with `git config --local` before committing.
+
 ## Rules
 - If working tree is dirty, ask user to commit or stash — don't refuse outright
 - Never force-push
