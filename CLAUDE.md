@@ -226,6 +226,7 @@ Install adds entries under a comment header:
 /.mcp.json
 .claude/skills/
 .claude/agents/
+.claude/settings.local.json
 ```
 
 Uninstall removes them.
