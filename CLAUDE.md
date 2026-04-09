@@ -10,7 +10,8 @@ Create a bare `.agentic/` in the current workspace:
 
 ```
 .agentic/
-├── RULES.md          # empty, user starts writing rules here
+├── AGENTIC.md        # bundled template, updated via `agentic update`
+├── RULES.md          # references AGENTIC.md, user adds rules here
 ├── .mcp.json         # { "mcpServers": {} }
 ├── skills/           # empty dir
 ├── agents/           # empty dir
@@ -97,6 +98,10 @@ Flatten everything to real files, remove `.agentic/`:
 - Delete `.agentic/` directory
 - Remove `.agentic/`-related comments and all platform-derived entries from `.gitignore`
 - After eject, workspace has standalone platform configs with no dependency on `.agentic/`
+
+### `agentic update`
+
+Update `.agentic/AGENTIC.md` to match the current package version. Run after upgrading the agentic package.
 
 ### `agentic status`
 
@@ -267,13 +272,17 @@ agentic/
 │   │   ├── uninstall.ts
 │   │   ├── inject.ts
 │   │   ├── eject.ts
+│   │   ├── update.ts
 │   │   ├── mcp.ts
 │   │   └── status.ts
-│   └── lib/
-│       ├── platforms.ts   # platform definitions & mappings
-│       ├── symlink.ts     # safeLink, removeSymlink
-│       ├── gitignore.ts   # add/remove entries
-│       └── translate.ts   # JSON↔TOML, MD↔TOML
+│   ├── lib/
+│   │   ├── platforms.ts   # platform definitions & mappings
+│   │   ├── symlink.ts     # safeLink, removeSymlink
+│   │   ├── gitignore.ts   # add/remove entries
+│   │   ├── templates.ts   # bundled template file helpers
+│   │   └── translate.ts   # JSON↔TOML, MD↔TOML
+│   └── templates/
+│       └── AGENTIC.md     # bundled template, copied to .agentic/ on init/update
 ```
 
 ## Distribution

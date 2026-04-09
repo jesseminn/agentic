@@ -1,6 +1,7 @@
 import * as fs from "node:fs";
 import * as path from "node:path";
 import { AGENTIC_DIR, getAgenticDir } from "../lib/platforms.js";
+import { copyTemplate } from "../lib/templates.js";
 
 export function initCommand(cwd: string): void {
   const dir = getAgenticDir(cwd);
@@ -12,8 +13,14 @@ export function initCommand(cwd: string): void {
 
   fs.mkdirSync(dir, { recursive: true });
 
-  // RULES.md — empty
-  fs.writeFileSync(path.join(dir, "RULES.md"), "");
+  // AGENTIC.md — bundled template (updated via `agentic update`)
+  copyTemplate("AGENTIC.md", path.join(dir, "AGENTIC.md"));
+
+  // RULES.md — references AGENTIC.md, user owns this file
+  fs.writeFileSync(
+    path.join(dir, "RULES.md"),
+    "See [AGENTIC.md](AGENTIC.md) for workspace setup.\n"
+  );
 
   // .mcp.json — empty config
   fs.writeFileSync(
@@ -30,5 +37,5 @@ export function initCommand(cwd: string): void {
   // .gitignore
   fs.writeFileSync(path.join(dir, ".gitignore"), "temp/\nnode_modules/\n");
 
-  console.log(`Created ${AGENTIC_DIR}/ with RULES.md, .mcp.json, skills/, agents/`);
+  console.log(`Created ${AGENTIC_DIR}/ with AGENTIC.md, RULES.md, .mcp.json, skills/, agents/`);
 }
