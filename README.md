@@ -8,6 +8,7 @@ Write your AI agent config once — use it everywhere.
 
 ```
 .agentic/
+├── AGENTIC.md    # bundled template (updated via `agentic update`)
 ├── RULES.md      → CLAUDE.md, GEMINI.md, AGENTS.md
 ├── .mcp.json     → .mcp.json, .gemini/settings.json, .codex/config.toml
 ├── skills/       → .claude/skills, .gemini/skills, .agents/skills
@@ -83,6 +84,9 @@ agentic status
 agentic mcp add <name> <command> [args...] [--env KEY=VALUE...]
 agentic mcp remove <name>
 agentic mcp list
+
+# after upgrading the agentic package, update template files
+agentic update
 
 # remove a platform
 agentic uninstall gemini

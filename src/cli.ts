@@ -8,6 +8,7 @@ import { installCommand } from "./commands/install.js";
 import { uninstallCommand } from "./commands/uninstall.js";
 import { injectCommand } from "./commands/inject.js";
 import { ejectCommand } from "./commands/eject.js";
+import { updateCommand } from "./commands/update.js";
 import type { PlatformId } from "./lib/platforms.js";
 
 const cwd = process.cwd();
@@ -63,6 +64,11 @@ program
     }
     await injectCommand(cwd, platform as PlatformId);
   });
+
+program
+  .command("update")
+  .description("Update .agentic/ template files to match current package version")
+  .action(() => updateCommand(cwd));
 
 program
   .command("eject")
