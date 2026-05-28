@@ -5,13 +5,15 @@ description: Use when the user wants to cut a new release of agentic, says "rele
 
 # /release
 
-Cut a new release of `agentic`: bump version, commit, tag, push, create the GitHub release, and verify the build workflow attached the tarball.
+Cut a new release of `agentic`. The agent handles everything that doesn't require GitHub auth (version bump, push, draft notes, prefill URL); the user clicks "Publish release" in the GitHub web UI.
+
+**Why no `gh`:** this repo may be cut from any machine, and `gh` isn't guaranteed to be installed or authenticated as `jesseminn` everywhere (e.g., a work laptop where `gh` is signed into a different account). The web UI works on any device with a browser, and anonymous GitHub API calls (`curl`) cover verification because `jesseminn/agentic` is public — no auth setup required.
 
 ## Prerequisites
 
 - Working tree must be clean (no uncommitted changes)
 - On `main`, up to date with `origin/main`
-- `gh` CLI authenticated against an account with push to `jesseminn/agentic` (`gh auth status`)
+- SSH push to `git@github_jesseminn:jesseminn/agentic.git` works (this skill never uses `gh`)
 
 If any prerequisite fails, stop and tell the user what to fix. Do not auto-stash, do not auto-rebase.
 
@@ -61,6 +63,8 @@ It refuses to run on a dirty working tree, which is a built-in safety net for st
 git push origin main --tags
 ```
 
+Uses the `github_jesseminn` SSH alias — no `gh` involved.
+
 ### 5. Draft release notes
 
 Summarize commits since the previous tag (excluding the bump commit just made):
@@ -69,47 +73,59 @@ Summarize commits since the previous tag (excluding the bump commit just made):
 git log $(git describe --tags --abbrev=0 HEAD^)..HEAD^ --oneline
 ```
 
-Present a draft to the user. Confirm before publishing.
+Draft release notes from that log. Present to the user. Confirm before printing the publish-ready output in step 6.
 
-### 6. Create the GitHub release
+### 6. Print publish-ready output
 
-```bash
-gh release create vX.Y.Z \
-  --repo jesseminn/agentic \
-  --title "vX.Y.Z" \
-  --notes "$(cat <<'EOF'
-<release notes here>
-EOF
-)"
-```
+Print three things in a clearly-formatted block:
+
+1. **Prefill URL** — the user opens this in their browser to land on the GitHub release creation form with the tag already selected:
+   ```
+   https://github.com/jesseminn/agentic/releases/new?tag=vX.Y.Z
+   ```
+
+2. **Title:**
+   ```
+   vX.Y.Z
+   ```
+   (Or something more descriptive if the release has a theme — e.g., `v0.2.0 — Sentinel-managed RULES.md`.)
+
+3. **Notes:** the markdown body the user pastes into the form. Wrap it in a fenced code block so it's easy to copy.
+
+Then tell the user: *"Open the URL, paste title and notes, click 'Publish release'. Let me know when it's published."*
+
+Wait for the user to confirm. Do **not** proceed to verification until they say it's published.
 
 ### 7. Verify the build workflow fired
 
-Wait ~30 seconds, then check:
+After the user confirms the release is published, wait ~10 seconds, then check the GitHub API anonymously:
 
 ```bash
-gh run list --workflow=release.yml --repo jesseminn/agentic --limit 3
+curl -s "https://api.github.com/repos/jesseminn/agentic/actions/runs?event=release&per_page=3" | \
+  jq '.workflow_runs[] | {name, status, conclusion, created_at, head_branch}'
 ```
 
-You should see a new run for `vX.Y.Z` from the `release` event. If you do, wait for it to complete (`gh run watch <id> --exit-status`).
+You should see a recent run for `release.yml` triggered by the `release` event. If `status` is `in_progress` / `queued`, wait and re-check. If `conclusion` becomes `success`, proceed.
 
-**If no new run appeared** — known gotcha: releases created via `gh release create` sometimes don't fire `release.published`. Fall back to manual dispatch:
-
-```bash
-gh workflow run release.yml -f tag=vX.Y.Z --repo jesseminn/agentic
-```
+**If no run appeared within 30s** — known gotcha: `release.published` sometimes doesn't fire. The user can manually trigger it through the Actions tab:
+- Open `https://github.com/jesseminn/agentic/actions/workflows/release.yml`
+- Click "Run workflow" → fill the `tag` input with `vX.Y.Z` → "Run workflow"
+- Then re-run the curl above.
 
 ### 8. Verify the tarball is attached
 
 ```bash
-gh release view vX.Y.Z --repo jesseminn/agentic --json assets --jq '.assets[] | {name, size}'
+curl -s "https://api.github.com/repos/jesseminn/agentic/releases/tags/vX.Y.Z" | \
+  jq '.assets[] | {name, size}'
 ```
 
 Expected: `agentic-X.Y.Z.tgz` is listed. Without it, consumers can't install — the release is broken.
 
+If the workflow run from step 7 completed but the asset isn't there yet, the upload may still be in flight — wait ~10s and re-check. If still missing after the workflow shows `success`, investigate the run logs via the Actions tab.
+
 ## Identity
 
-This repo uses a local git identity to keep personal commits separate from work:
+This repo uses a local git identity (configured in `.git/config`):
 - `user.name`: Jesse Chen
 - `user.email`: jesseminn@gmail.com
 
@@ -122,3 +138,4 @@ If these are ever missing or wrong, set them with `git config --local` before co
 - Never skip the verification step — a release without a tarball asset is silently broken
 - If pre-flight fails, stop. Don't try to clean up a dirty tree automatically
 - Always use `npm version` for the bump — don't hand-edit version fields (the lockfile has two occurrences; manual edits drift)
+- Don't reach for `gh` in this skill — it isn't guaranteed to be installed or authenticated as `jesseminn` everywhere this repo gets cut from. The web UI plus anonymous `curl` is the universal path that works on any device.
