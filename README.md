@@ -104,6 +104,36 @@ agentic eject
 | MCP | `.mcp.json` (symlink) | `.gemini/settings.json` (merge) | `.codex/config.toml` (translate) |
 | Agents | `.claude/agents` (symlink) | `.gemini/agents` (symlink) | `.codex/agents/*.toml` (translate) |
 
+## Releasing
+
+> For agent-driven releases, see [`.claude/skills/release/SKILL.md`](.claude/skills/release/SKILL.md).
+
+Releases are cut from `main` and shipped as `npm pack`-style tarballs attached as GitHub release assets — consumers install via `npm install -g ./agentic-X.Y.Z.tgz`.
+
+1. Bump, commit, and tag in one step:
+   ```bash
+   npm version <patch|minor|major|X.Y.Z> -m "chore: release v%s"
+   ```
+   This updates both `package.json` and `package-lock.json`, creates a commit, and creates an annotated tag.
+2. Push:
+   ```bash
+   git push origin main --tags
+   ```
+3. Create the GitHub release:
+   ```bash
+   gh release create vX.Y.Z --title "vX.Y.Z" --notes "..."
+   ```
+4. A workflow ([`.github/workflows/release.yml`](.github/workflows/release.yml)) auto-builds and attaches `agentic-X.Y.Z.tgz`. Verify the asset appears on the release page within ~1 minute:
+   ```bash
+   gh release view vX.Y.Z --json assets --jq '.assets[].name'
+   ```
+
+**Known gotcha:** releases created via `gh release create` sometimes don't fire the `release.published` event. If no workflow run appears within 30s, dispatch manually:
+
+```bash
+gh workflow run release.yml -f tag=vX.Y.Z
+```
+
 ## Related
 
 - [AGENTS.md](https://agents.md/) — an open standard for the `AGENTS.md` file format that guides AI coding agents. Supported by 60,000+ projects and tools like Claude Code, Copilot, Cursor. `agentic` symlinks `.agentic/RULES.md` to each platform's rules file (`CLAUDE.md`, `GEMINI.md`, `AGENTS.md`).
