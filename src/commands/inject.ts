@@ -12,6 +12,7 @@ import {
   writeMcpJson,
   agentTomlToMd,
 } from "../lib/translate.js";
+import { copyBundledSkills, ensureManagedBlock } from "../lib/templates.js";
 
 export async function injectCommand(
   cwd: string,
@@ -42,6 +43,14 @@ export async function injectCommand(
     case "codex":
       injectCodex(cwd, agenticDir);
       break;
+  }
+
+  ensureManagedBlock(path.join(agenticDir, "RULES.md"));
+  console.log("  Wrapped .agentic/RULES.md with agentic managed block");
+
+  const bundled = copyBundledSkills(path.join(agenticDir, "skills"));
+  if (bundled.length > 0) {
+    console.log(`  Installed bundled skills: ${bundled.join(", ")}`);
   }
 
   console.log(

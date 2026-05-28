@@ -8,10 +8,11 @@ Write your AI agent config once — use it everywhere.
 
 ```
 .agentic/
-├── AGENTIC.md    # bundled template (updated via `agentic update`)
 ├── RULES.md      → CLAUDE.md, GEMINI.md, AGENTS.md
+│                   (top of file is a tool-managed sentinel block; user rules go below it)
 ├── .mcp.json     → .mcp.json, .gemini/settings.json, .codex/config.toml
 ├── skills/       → .claude/skills, .gemini/skills, .agents/skills
+│                   (skills prefixed `agentic-` are bundled and managed by `agentic update`)
 └── agents/       → .claude/agents, .gemini/agents, .codex/agents/*.toml
 ```
 

@@ -2,6 +2,15 @@
 
 A CLI tool that manages a cross-platform `.agentic/` directory as the single source of truth for AI agent configuration. Write rules, skills, MCP config, and subagents once — derive platform-specific configs for Claude Code, Gemini CLI, and Codex CLI.
 
+## Design Conventions
+
+Two ownership boundaries make `update` safe without a manifest file:
+
+1. **Sentinel-delimited managed block in `RULES.md`.** Everything between `<!-- agentic:begin -->` and `<!-- agentic:end -->` is tool-owned and rewritten by `update`. Everything else in the file is user-owned and never touched. If the markers are missing, `update` warns and skips RULES.md rather than guessing.
+2. **`agentic-` prefix marks bundled skills.** Any directory under `.agentic/skills/` whose name starts with `agentic-` (e.g., `agentic-bootstrap`) is tool-owned: `init` writes it, `update` overwrites it, `eject` removes it. Any skill without that prefix is user-owned and is never touched. To customize a bundled skill, copy it to a new name.
+
+The convention lets the tool ship updates to managed content (the version stamp, the "don't edit derived files" rule, the bootstrap skill) without an audit trail or content manifest — the prefix and the markers are the contract.
+
 ## Commands
 
 ### `agentic init`
@@ -10,13 +19,15 @@ Create a bare `.agentic/` in the current workspace:
 
 ```
 .agentic/
-├── AGENTIC.md        # bundled template, updated via `agentic update`
-├── RULES.md          # references AGENTIC.md, user adds rules here
+├── RULES.md          # sentinel-managed header + user-owned rules below
 ├── .mcp.json         # { "mcpServers": {} }
-├── skills/           # empty dir
-├── agents/           # empty dir
+├── skills/           # contains bundled `agentic-*` skills + room for user skills
+│   └── agentic-bootstrap/SKILL.md
+├── agents/           # empty dir, user-owned
 └── .gitignore        # temp/, node_modules/
 ```
+
+`RULES.md` is written from the bundled template. It contains an `<!-- agentic:begin --> ... <!-- agentic:end -->` sentinel block at the top (managed by `update`) and an empty user-rules area below.
 
 ### `agentic install <claude|gemini|codex>`
 
@@ -88,12 +99,16 @@ Import existing platform configs into `.agentic/`:
 
 If `.agentic/` already has configs, prompt user to confirm overwrite before proceeding.
 
-After import, prompt user to run `agentic install <platform>` to replace originals with symlinks.
+After import, wrap `.agentic/RULES.md` with the `<!-- agentic:begin --> ... <!-- agentic:end -->` managed block (preserving the imported content below it), and copy bundled `agentic-*` skills into `.agentic/skills/`.
+
+Then prompt user to run `agentic install <platform>` to replace originals with symlinks.
 
 ### `agentic eject`
 
 Flatten everything to real files, remove `.agentic/`:
-- For each installed platform: replace symlinks with copies of the target files
+- Strip the `<!-- agentic:begin --> ... <!-- agentic:end -->` managed block from `.agentic/RULES.md` so the flattened rules file doesn't claim to be managed
+- Remove all bundled `agentic-*` skills from `.agentic/skills/` so they don't propagate into the flattened platform skills directories
+- For each installed platform: replace symlinks with copies of the (now-clean) target files
 - For generated files (Codex TOML, Gemini settings.json): keep as-is (already real files)
 - Delete `.agentic/` directory
 - Remove `.agentic/`-related comments and all platform-derived entries from `.gitignore`
@@ -101,7 +116,11 @@ Flatten everything to real files, remove `.agentic/`:
 
 ### `agentic update`
 
-Update `.agentic/AGENTIC.md` to match the current package version. Run after upgrading the agentic package.
+Refresh tool-managed content after an `agentic` version bump:
+- Replace the content between `<!-- agentic:begin -->` and `<!-- agentic:end -->` in `.agentic/RULES.md` with the bundled template (interpolated with the current version). User content outside the markers is untouched. If the markers are missing, warn and skip.
+- Overwrite all bundled `agentic-*` skills in `.agentic/skills/` from the bundled templates. User-authored skills (anything not prefixed `agentic-`) are never touched.
+
+Other files (`.mcp.json`, `agents/`, project-specific content) are never touched by `update`.
 
 ### `agentic status`
 
@@ -279,10 +298,12 @@ agentic/
 │   │   ├── platforms.ts   # platform definitions & mappings
 │   │   ├── symlink.ts     # safeLink, removeSymlink
 │   │   ├── gitignore.ts   # add/remove entries
-│   │   ├── templates.ts   # bundled template file helpers
+│   │   ├── templates.ts   # RULES.md template + managed-block + bundled-skill helpers
 │   │   └── translate.ts   # JSON↔TOML, MD↔TOML
 │   └── templates/
-│       └── AGENTIC.md     # bundled template, copied to .agentic/ on init/update
+│       ├── RULES.md       # bundled template — sentinel-delimited managed block + user-rules area
+│       └── skills/
+│           └── agentic-bootstrap/  # bundled skill; copied to .agentic/skills/ on init+update+inject
 ```
 
 ## Distribution

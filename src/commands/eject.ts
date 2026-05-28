@@ -9,6 +9,7 @@ import {
 import { flattenSymlink } from "../lib/symlink.js";
 import { removeAllAgenticEntries } from "../lib/gitignore.js";
 import { PLATFORMS } from "../lib/platforms.js";
+import { removeBundledSkills, stripManagedBlock } from "../lib/templates.js";
 
 export function ejectCommand(cwd: string): void {
   requireAgenticDir(cwd);
@@ -17,6 +18,15 @@ export function ejectCommand(cwd: string): void {
 
   if (installed.length === 0) {
     console.log("No platforms installed. Nothing to eject.");
+  }
+
+  // Strip agentic-managed content from .agentic/ before flattening so the
+  // resulting standalone files don't carry it forward.
+  const agenticDir = getAgenticDir(cwd);
+  stripManagedBlock(path.join(agenticDir, "RULES.md"));
+  const removed = removeBundledSkills(path.join(agenticDir, "skills"));
+  if (removed.length > 0) {
+    console.log(`  Removed bundled skills: ${removed.join(", ")}`);
   }
 
   // Flatten symlinks for each installed platform
@@ -48,7 +58,6 @@ export function ejectCommand(cwd: string): void {
   removeAllAgenticEntries(cwd);
 
   // Delete .agentic/
-  const agenticDir = getAgenticDir(cwd);
   fs.rmSync(agenticDir, { recursive: true, force: true });
   console.log(`\nRemoved ${AGENTIC_DIR}/. Platform configs are now standalone files.`);
 }
