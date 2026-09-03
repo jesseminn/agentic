@@ -1,141 +1,131 @@
 # agentic
 
-Write your AI agent config once — use it everywhere.
+Seed a shared **agentic harness** into a project, then link it into each AI coding client's config — Claude Code, Antigravity CLI, Codex CLI.
 
-## What is it
+Repo: `jesseminn/agentic`. Package and command: `agentic`.
 
-`agentic` is a CLI tool that manages a single `.agentic/` directory as the source of truth for AI agent configuration. It derives platform-specific configs for **Claude Code**, **Gemini CLI**, and **Codex CLI** from that one directory.
+## What it does
+
+`agentic` has two jobs and contains no harness content of its own.
+
+1. **Seed** a harness into `.agentic/` — `install`, `update`, `uninstall`. The harness is a git repo or directory your team owns. A lockfile records exactly which files came from it, so `update` knows what it may overwrite and never touches project-owned content.
+2. **Link** `.agentic/` into a platform's config — `link`, `unlink`. Per-entry symlinks and a few generated files, all committed, so a fresh clone, a CI checkout, or a `git worktree add` carries the whole harness.
 
 ```
 .agentic/
-├── RULES.md      → CLAUDE.md, GEMINI.md, AGENTS.md
-│                   (top of file is a tool-managed sentinel block; user rules go below it)
-├── .mcp.json     → .mcp.json, .gemini/settings.json, .codex/config.toml
-├── skills/       → .claude/skills, .gemini/skills, .agents/skills
-│                   (skills prefixed `agentic-` are bundled and managed by `agentic update`)
-└── agents/       → .claude/agents, .gemini/agents, .codex/agents/*.toml
+├── agentic.lock              ownership + provenance
+├── RULES.md                  harness
+├── rules/<topic>.md          harness or project (lock decides per file)
+├── PROJECT.md                project (seeded once, never updated)
+├── project/<topic>.md        project (seeded once)
+├── references/<doc>.md       harness or project
+├── skills/<name>/SKILL.md    harness or project
+├── agents/<name>.md          harness or project
+└── .mcp.json                 harness keys + project keys
 ```
 
-## Why
+Design and rationale: [docs/design-v1.md](docs/design-v1.md).
 
-Each AI coding agent has its own config format: Claude Code reads `CLAUDE.md` and `.mcp.json`, Gemini CLI reads `GEMINI.md` and `.gemini/settings.json`, Codex CLI reads `AGENTS.md` and `.codex/config.toml`. If you use more than one, you're maintaining the same rules, MCP servers, skills, and agents in multiple places.
-
-`agentic` solves this. Write once in `.agentic/`, run `agentic install <platform>` for each tool you use. When you update `.agentic/`, symlinked configs stay in sync automatically. For platforms that need different formats (Codex uses TOML, Gemini merges into settings.json), `agentic` handles the translation.
-
-## How it's designed
-
-- **Symlinks** for configs that share the same format (rules, skills, agents for Claude/Gemini). No copying, no drift.
-- **Translation** where formats differ: JSON → TOML for Codex MCP config, Markdown → TOML for Codex agents.
-- **Merge** for Gemini's `settings.json` — writes only the `mcpServers` key, preserves everything else.
-- **Gitignore management** — derived files are auto-added to `.gitignore` under platform-specific comment headers, cleaned up on uninstall.
-- **Reversible** — `inject` imports existing configs into `.agentic/`, `eject` flattens everything back to standalone files.
-
-## How to use it
-
-### Install
+## Install the tool
 
 ```bash
-# as a project dev dependency
-npm i -D github:jesseminn/agentic
-
-# or globally
-npm i -g github:jesseminn/agentic
-
-# or one-off
-npx github:jesseminn/agentic <command>
+npm i -g github:jesseminn/agentic          # or -D in a project
 ```
 
-### Set up
+Node 24+.
+
+## Use
 
 ```bash
-# create .agentic/ directory
-agentic init
+# seed a harness (git URL or path, optional #ref)
+agentic install https://github.com/you/your-harness
+agentic install ../your-harness#main
 
-# write your rules
-vim .agentic/RULES.md
+# link the clients you use — commit the result
+agentic link claude
+agentic link antigravity
+agentic link codex
 
-# add MCP servers
-agentic mcp add browsermcp npx @browsermcp/mcp@latest
-agentic mcp add github npx @anthropic/mcp-github --env GITHUB_TOKEN=xxx
+# later
+agentic update              # pull the harness from the lock's source
+agentic update ../local     # or from a local checkout, for testing
+agentic status              # drift report; exit 1 on drift (CI gate)
 
-# install for the platforms you use
-agentic install claude
-agentic install gemini
-agentic install codex
-```
-
-### Already have configs?
-
-```bash
-# import existing Claude Code config into .agentic/
-agentic inject claude
-
-# then install for other platforms
-agentic install gemini
-agentic install codex
-```
-
-### Day-to-day
-
-```bash
-# check what's installed
-agentic status
-
-# manage MCP servers (auto-propagates to all installed platforms)
-agentic mcp add <name> <command> [args...] [--env KEY=VALUE...]
-agentic mcp remove <name>
+# project MCP servers (env values must be ${NAME} references)
+agentic mcp add gh npx mcp-github --env 'GITHUB_TOKEN=${GITHUB_TOKEN}'
 agentic mcp list
 
-# after upgrading the agentic package, update template files
-agentic update
-
-# remove a platform
-agentic uninstall gemini
-
-# stop using agentic entirely (flatten to standalone files)
-agentic eject
+# leaving
+agentic unlink codex        # remove what link created, nothing else
+agentic uninstall           # remove the harness; project content stays
+agentic eject               # flatten everything to standalone files
 ```
 
-## Platform support
+No harness yet? `agentic init` creates a bare `.agentic/` you can link on its own.
 
-| | Claude Code | Gemini CLI | Codex CLI |
+## What `link` produces
+
+| harness part | Claude Code | Antigravity CLI (`agy`) | Codex CLI |
 |---|---|---|---|
-| Rules | `CLAUDE.md` (symlink) | `GEMINI.md` (symlink) | `AGENTS.md` (symlink) |
-| Skills | `.claude/skills` (symlink) | `.gemini/skills` (symlink) | `.agents/skills` (symlink) |
-| MCP | `.mcp.json` (symlink) | `.gemini/settings.json` (merge) | `.codex/config.toml` (translate) |
-| Agents | `.claude/agents` (symlink) | `.gemini/agents` (symlink) | `.codex/agents/*.toml` (translate) |
+| rules root | `CLAUDE.md` — generated, `@.agentic/RULES.md` + `@.agentic/PROJECT.md` | `AGENTS.md` — generated, content inlined | `AGENTS.md` — same file |
+| `rules/`, `project/` | per-file links in `.claude/rules/` | inlined in `AGENTS.md` | inlined in `AGENTS.md` |
+| `skills/` | per-dir links in `.claude/skills/` | per-dir links in `.agents/skills/` | same directory |
+| `agents/` | per-file links in `.claude/agents/` | links at `.agents/agents/<name>/agent.md` | `.codex/agents/*.toml` (generated) |
+| `.mcp.json` | symlink `.mcp.json` | `mcpServers` written into `.agents/mcp_config.json` | `.codex/config.toml` (generated) |
+
+Antigravity and Codex both read `AGENTS.md` and `.agents/skills/`, so linking both produces one shared copy; unlinking one leaves what the other still needs.
+
+Everything derived is tracked. Only files a device or the platform itself writes are gitignored: `.claude/settings.local.json`, `.claude/worktrees/`.
+
+Because links are per entry, a project can drop its own platform-specific skill into `.claude/skills/` next to the linked ones. `link` never touches an entry it didn't create.
+
+Gemini CLI is not supported: it stopped serving individual accounts on 2026-06-18 and Antigravity CLI is its successor. It still works under enterprise Code Assist licenses and API keys; open an issue if you need the mapping back.
+
+## How `update` decides
+
+Every harness file is recorded in `agentic.lock` with a content hash. On `update`:
+
+| upstream has it | lock has it | local | action |
+|---|---|---|---|
+| yes | yes | equals lock | overwrite |
+| yes | yes | differs | **conflict** — hand-edited; skipped |
+| yes | no | exists | **conflict** — project file at a new upstream path; skipped |
+| yes | no | absent | add |
+| no | yes | equals lock | delete |
+| no | yes | differs | **conflict** — hand-edited, removed upstream; skipped |
+
+Anything in `.agentic/` not in the lock is project-owned and invisible to `update`. Conflicts print as a list and exit non-zero; `--force` takes the upstream side.
+
+## Writing a harness
+
+A harness is a repo with this shape:
+
+```
+harness.json            { "name": "...", "version": "..." }
+RULES.md                behavior rules (short map file)
+rules/<topic>.md        topic rules
+references/<doc>.md     workflow docs that skills cite — cite them root-relative: .agentic/references/<doc>.md
+skills/<name>/SKILL.md  Agent Skills format; a namespace prefix keeps harness skills clear of platform built-ins
+agents/<name>.md        subagents, markdown + frontmatter (name, description, body)
+mcps.json               MCP servers; env values as ${NAME}, never literals
+PROJECT.md              optional seed for the project's own context
+project/<topic>.md      optional seeds
+```
+
+Not part of a harness: hooks (every client has its own model), platform-specific mechanisms (plugins, output styles), and project-specific content beyond the seeds.
 
 ## Releasing
 
 > For agent-driven releases, see [`.claude/skills/release/SKILL.md`](.claude/skills/release/SKILL.md).
 
-Releases are cut from `main` and shipped as `npm pack`-style tarballs attached as GitHub release assets — consumers install via `npm install -g ./agentic-X.Y.Z.tgz`.
+Releases are cut from `main` and shipped as `npm pack` tarballs attached as GitHub release assets.
 
-1. Bump, commit, and tag in one step:
-   ```bash
-   npm version <patch|minor|major|X.Y.Z> -m "chore: release v%s"
-   ```
-   This updates both `package.json` and `package-lock.json`, creates a commit, and creates an annotated tag.
-2. Push:
-   ```bash
-   git push origin main --tags
-   ```
-3. Create the GitHub release:
-   ```bash
-   gh release create vX.Y.Z --title "vX.Y.Z" --notes "..."
-   ```
-4. A workflow ([`.github/workflows/release.yml`](.github/workflows/release.yml)) auto-builds and attaches `agentic-X.Y.Z.tgz`. Verify the asset appears on the release page within ~1 minute:
-   ```bash
-   gh release view vX.Y.Z --json assets --jq '.assets[].name'
-   ```
-
-**Known gotcha:** releases created via `gh release create` sometimes don't fire the `release.published` event. If no workflow run appears within 30s, dispatch manually:
-
-```bash
-gh workflow run release.yml -f tag=vX.Y.Z
-```
+1. `npm version <patch|minor|major> -m "chore: release v%s"`
+2. `git push origin main --tags`
+3. `gh release create vX.Y.Z --title "vX.Y.Z" --notes "..."`
+4. The [release workflow](.github/workflows/release.yml) attaches `agentic-X.Y.Z.tgz`. If no run appears within 30s: `gh workflow run release.yml -f tag=vX.Y.Z`.
 
 ## Related
 
-- [AGENTS.md](https://agents.md/) — an open standard for the `AGENTS.md` file format that guides AI coding agents. Supported by 60,000+ projects and tools like Claude Code, Copilot, Cursor. `agentic` symlinks `.agentic/RULES.md` to each platform's rules file (`CLAUDE.md`, `GEMINI.md`, `AGENTS.md`).
-- [.agents protocol](https://dotagentsprotocol.com/) — an open directory standard that consolidates AI agent config (MCP, AGENTS.md, skills, sub-agents) into a single `.agents/` directory. It aims for platforms to adopt the standard natively. `agentic` takes a different approach: work with each platform's existing config format today, using `.agentic/` as a source of truth with symlinks and translation.
+- [AGENTS.md](https://agents.md/) — the open `AGENTS.md` standard. `agentic` generates it from `.agentic/` for Antigravity and Codex.
+- [.agents protocol](https://dotagentsprotocol.com/) — a proposal to consolidate agent config into one `.agents/` directory natively. `agentic` works with each platform's existing format today instead.

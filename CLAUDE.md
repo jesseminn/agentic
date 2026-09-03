@@ -1,319 +1,101 @@
 # agentic
 
-A CLI tool that manages a cross-platform `.agentic/` directory as the single source of truth for AI agent configuration. Write rules, skills, MCP config, and subagents once — derive platform-specific configs for Claude Code, Gemini CLI, and Codex CLI.
+CLI that seeds a shared *agentic harness* into a project's `.agentic/` and links it into Claude Code, Antigravity CLI, and Codex CLI config. The tool ships no harness content. Full design: `docs/design-v1.md` — read it before changing ownership, lock, or link semantics.
 
-## Design Conventions
+## Two jobs
 
-Two ownership boundaries make `update` safe without a manifest file:
+- **Seed**: `install <git-url|path>[#ref]`, `update [source] [--force]`, `uninstall`. Copies harness files into `.agentic/` and records them in `.agentic/agentic.lock` with content hashes.
+- **Link**: `link <platform>`, `unlink <platform>`. Derives platform config via per-entry symlinks and generated files. Everything derived is committed.
 
-1. **Sentinel-delimited managed block in `RULES.md`.** Everything between `<!-- agentic:begin -->` and `<!-- agentic:end -->` is tool-owned and rewritten by `update`. Everything else in the file is user-owned and never touched. If the markers are missing, `update` warns and skips RULES.md rather than guessing.
-2. **`agentic-` prefix marks bundled skills.** Any directory under `.agentic/skills/` whose name starts with `agentic-` (e.g., `agentic-bootstrap`) is tool-owned: `init` writes it, `update` overwrites it, `eject` removes it. Any skill without that prefix is user-owned and is never touched. To customize a bundled skill, copy it to a new name.
+## Ownership — the one invariant
 
-The convention lets the tool ship updates to managed content (the version stamp, the "don't edit derived files" rule, the bootstrap skill) without an audit trail or content manifest — the prefix and the markers are the contract.
+The tool touches only:
+
+- inside `.agentic/`: paths listed in the lock (`files`) and MCP keys listed in the lock (`mcpServers`);
+- inside platform dirs: symlinks that point into `.agentic/`, files carrying the generated header (`lib/generated.ts`), and the `mcpServers` key of a merge target.
+
+Everything else belongs to the user. Never add a code path that writes outside this set. `PROJECT.md` and `project/` are seeded once and never recorded, so `update` cannot see them.
+
+## Harness shape (`lib/harness.ts`)
+
+```
+harness.json  RULES.md  rules/  references/  skills/*/SKILL.md  agents/  mcps.json   ← harness-owned
+PROJECT.md  project/                                                                ← seed-once
+```
+
+`validateHarness` rejects a missing `harness.json`/`RULES.md`, a skill dir without `SKILL.md`, and any literal MCP env value (must be `${NAME}`).
+
+## Update algorithm (`commands/update.ts`)
+
+Per path, comparing upstream hash / lock hash / local hash:
+
+| upstream | lock | local | action |
+|---|---|---|---|
+| yes | yes | = lock or = upstream | overwrite |
+| yes | yes | differs | conflict (modified locally) |
+| yes | no | exists, = upstream | adopt |
+| yes | no | exists, differs | conflict (project file at new path) |
+| yes | no | absent | add |
+| no | yes | = lock | delete |
+| no | yes | differs | conflict (modified, removed upstream) |
+
+MCP keys use the same table with `hashJson` on the entry. Conflicts are skipped, keep their old lock entry so they resurface, print, and exit 1. `--force` takes upstream. After applying, `update` re-runs `link` for every platform in `lock.platforms`.
+
+## Link algorithm (`lib/linker.ts`)
+
+Per platform (`lib/platforms.ts` mapping):
+
+| | Claude Code | Antigravity CLI | Codex CLI |
+|---|---|---|---|
+| root | `CLAUDE.md`, `import` mode (`@` lines) | `AGENTS.md`, `concat` | `AGENTS.md`, `concat` (same file) |
+| rules/ + project/ | per-file links in `.claude/rules/` | inlined in root | inlined in root |
+| skills/ | `.claude/skills/<name>` links | `.agents/skills/<name>` links | same dir |
+| agents/ | `.claude/agents/<name>.md` links (`link`) | `.agents/agents/<name>/agent.md` links (`link-dir`) | `.codex/agents/*.toml` (`translate`) |
+| MCP | symlink `.mcp.json` | merge `mcpServers` into `.agents/mcp_config.json` | translate to `.codex/config.toml` |
+| gitignore | `settings.local.json`, `worktrees/` | none | none |
+
+- Root file is always generated with the header. A v0.2 symlink into `.agentic/` is replaced; a real non-generated file is a conflict.
+- `reconcileLinks` / `reconcileLinkDirs` rules: add missing; remove dangling or undesired links into `.agentic/`; never touch anything else; a real entry in the way is a conflict.
+- **Shared paths**: Antigravity and Codex both own `AGENTS.md` and `.agents/skills/`. `unlinkPlatform` skips any path in `platformPaths()` of another platform still in `lock.platforms`.
+- `linkPlatform(cwd, p, { apply: false })` is the dry run `status` uses. `linkMcp` re-derives only MCP (used by `mcp add/remove`).
+- Gemini CLI was removed (no longer serves individual accounts; Antigravity is the successor). `readLock` drops unknown platform ids with a warning so old locks still load.
+
+## Lock (`lib/lock.ts`)
+
+```json
+{ "harness": { "name", "version", "source", "ref", "commit", "installedAt" },
+  "files": { "<rel>": "sha256:…" },
+  "mcpServers": { "<key>": "sha256:…" },
+  "platforms": ["claude"] }
+```
+
+`uninstall` sets `harness: null` and empties `files`/`mcpServers` but keeps the lock so `platforms` survives. `init` writes an empty lock.
 
 ## Commands
 
-### `agentic init`
+| command | file |
+|---|---|
+| `init` | `commands/init.ts` — bare `.agentic/` with stubs + empty lock |
+| `install <spec>` | `commands/install.ts` — refuses differing local content; identical content is adopted (v0.2 migration) |
+| `update [spec] [--force]` | `commands/update.ts` |
+| `uninstall` | `commands/uninstall.ts` — keeps locally modified harness files, reports them |
+| `link` / `unlink <platform>` | `commands/link.ts` |
+| `status` | `commands/status.ts` — exit 1 on any drift |
+| `mcp add/remove/list` | `commands/mcp.ts` — rejects literal secrets, warns on harness-owned keys |
+| `inject <platform>` | `commands/inject.ts` — only without a harness installed; skips symlinks and generated files |
+| `eject` | `commands/eject.ts` — inlines root imports, flattens links, strips headers, removes `.agentic/` |
 
-Create a bare `.agentic/` in the current workspace:
+Exit codes: 0 clean, 1 on conflicts or drift. All commands except `init`/`install` require `.agentic/`.
 
-```
-.agentic/
-├── RULES.md          # sentinel-managed header + user-owned rules below
-├── .mcp.json         # { "mcpServers": {} }
-├── skills/           # contains bundled `agentic-*` skills + room for user skills
-│   └── agentic-bootstrap/SKILL.md
-├── agents/           # empty dir, user-owned
-└── .gitignore        # temp/, node_modules/
-```
+## Tests
 
-`RULES.md` is written from the bundled template. It contains an `<!-- agentic:begin --> ... <!-- agentic:end -->` sentinel block at the top (managed by `update`) and an empty user-rules area below.
+`npm test` builds and runs `test/e2e.test.mjs` against `dist/cli.js` (node:test, real git, real worktree). Add a test for any change to ownership or reconciliation behavior.
 
-### `agentic install <claude|gemini|codex>`
+## Tech stack
 
-Derive platform-specific configs from `.agentic/`:
-
-| Source (in `.agentic/`) | Claude Code | Gemini CLI | Codex CLI |
-|--------|------------|------------|-----------|
-| `RULES.md` | create symlink `CLAUDE.md` | create symlink `GEMINI.md` | create symlink `AGENTS.md` |
-| `skills/` | create symlink `.claude/skills` | create symlink `.gemini/skills` | create symlink `.agents/skills` |
-| `.mcp.json` | create symlink `.mcp.json` | merge into `.gemini/settings.json#mcpServers` | translate to `.codex/config.toml` |
-| `agents/` | create symlink `.claude/agents` | create symlink `.gemini/agents` | translate to `.codex/agents/*.toml` |
-
-Also adds platform entries to root `.gitignore` (grouped under a comment header per platform).
-
-Codex uses `.agents/skills/` (the agent skills standard from agentskills.io). Gemini uses `.gemini/skills/`.
-
-### `agentic mcp add <name> <command> [args...] [--env KEY=VALUE...]`
-
-Add an MCP server to `.agentic/.mcp.json` and propagate to all installed platforms:
-- Write to `.agentic/.mcp.json`
-- For Claude: symlink handles it automatically
-- For Gemini: re-merge into `.gemini/settings.json#mcpServers`
-- For Codex: re-translate to `.codex/config.toml`
-
-Examples:
-- `agentic mcp add browsermcp npx @browsermcp/mcp@latest`
-- `agentic mcp add github npx @anthropic/mcp-github --env GITHUB_TOKEN=xxx`
-
-### `agentic mcp remove <name>`
-
-Remove an MCP server from `.agentic/.mcp.json` and propagate to all installed platforms:
-- For Claude: symlink handles it automatically
-- For Gemini: re-merge into `.gemini/settings.json#mcpServers` (remove the key)
-- For Codex: re-translate to `.codex/config.toml` (remove the section)
-
-### `agentic mcp list`
-
-List configured MCP servers from `.agentic/.mcp.json`.
-
-### `agentic uninstall <platform>`
-
-Remove derived configs for a platform:
-- Remove symlinks (not targets)
-- Remove generated files (Gemini settings.json MCP keys, Codex config.toml, Codex agents/*.toml)
-- Remove platform entries from `.gitignore` (keep entries still needed by other installed platforms)
-- Clean up empty parent directories (`.claude/`, `.gemini/`, `.codex/`, `.agents/`)
-
-### `agentic inject <claude|gemini|codex>`
-
-Import existing platform configs into `.agentic/`:
-
-**Claude:** `agentic inject claude`
-- `CLAUDE.md` copy to `.agentic/RULES.md`
-- `.mcp.json` copy to `.agentic/.mcp.json`
-- `.claude/skills/` copy to `.agentic/skills/`
-- `.claude/agents/` copy to `.agentic/agents/`
-
-**Gemini:** `agentic inject gemini`
-- `GEMINI.md` copy to `.agentic/RULES.md`
-- `.gemini/settings.json#mcpServers` copy to `.agentic/.mcp.json`
-- `.gemini/skills/` copy to `.agentic/skills/`
-- `.gemini/agents/` copy to `.agentic/agents/`
-
-**Codex:** `agentic inject codex`
-- `AGENTS.md` copy to `.agentic/RULES.md`
-- `.codex/config.toml` MCP sections translate to `.agentic/.mcp.json`
-- `.agents/skills/` copy to `.agentic/skills/`
-- `.codex/agents/*.toml` translate to `.agentic/agents/` (TOML → MD)
-
-If `.agentic/` already has configs, prompt user to confirm overwrite before proceeding.
-
-After import, wrap `.agentic/RULES.md` with the `<!-- agentic:begin --> ... <!-- agentic:end -->` managed block (preserving the imported content below it), and copy bundled `agentic-*` skills into `.agentic/skills/`.
-
-Then prompt user to run `agentic install <platform>` to replace originals with symlinks.
-
-### `agentic eject`
-
-Flatten everything to real files, remove `.agentic/`:
-- Strip the `<!-- agentic:begin --> ... <!-- agentic:end -->` managed block from `.agentic/RULES.md` so the flattened rules file doesn't claim to be managed
-- Remove all bundled `agentic-*` skills from `.agentic/skills/` so they don't propagate into the flattened platform skills directories
-- For each installed platform: replace symlinks with copies of the (now-clean) target files
-- For generated files (Codex TOML, Gemini settings.json): keep as-is (already real files)
-- Delete `.agentic/` directory
-- Remove `.agentic/`-related comments and all platform-derived entries from `.gitignore`
-- After eject, workspace has standalone platform configs with no dependency on `.agentic/`
-
-### `agentic update`
-
-Refresh tool-managed content after an `agentic` version bump:
-- Replace the content between `<!-- agentic:begin -->` and `<!-- agentic:end -->` in `.agentic/RULES.md` with the bundled template (interpolated with the current version). User content outside the markers is untouched. If the markers are missing, warn and skip.
-- Overwrite all bundled `agentic-*` skills in `.agentic/skills/` from the bundled templates. User-authored skills (anything not prefixed `agentic-`) are never touched.
-
-Other files (`.mcp.json`, `agents/`, project-specific content) are never touched by `update`.
-
-### `agentic status`
-
-Show current state:
-- Which platforms are installed
-- Symlink health per platform (intact or broken)
-- Number of MCP servers configured
-- Number of skills and agents defined
-
-## Error Handling
-
-- All commands except `init` require `.agentic/` to exist. Exit with an error message prompting the user to run `agentic init` first.
-- `init` should error if `.agentic/` already exists.
-- `install` is idempotent — running `agentic install claude` twice produces the same result (re-derive configs from `.agentic/`).
-
-## Platform Details
-
-### Claude Code
-- Rules: `CLAUDE.md` at project root
-- Skills: `.claude/skills/` (each skill has `SKILL.md`)
-- MCP: `.mcp.json` at project root (JSON, `mcpServers` key)
-- Agents: `.claude/agents/*.md` (Markdown with YAML frontmatter)
-
-### Gemini CLI
-- Rules: `GEMINI.md` at project root (does NOT auto-load `AGENTS.md`)
-- Skills: `.agents/skills/` (shared standard, takes precedence over `.gemini/skills/`)
-- MCP: `.gemini/settings.json` → `mcpServers` key (merge-write, preserve other keys)
-- Agents: `.gemini/agents/*.md` (Markdown with YAML frontmatter)
-
-### Codex CLI
-- Rules: `AGENTS.md` at project root
-- Skills: `.agents/skills/` (shared standard, auto-discovered)
-- MCP: `.codex/config.toml` → `[mcp_servers.<name>]` section (translate JSON → TOML)
-- Agents: `.codex/agents/*.toml` (translate MD frontmatter → TOML: `name`, `description`, `developer_instructions`)
-
-## Translation Details
-
-### MCP: JSON → Codex TOML
-```json
-{
-  "mcpServers": {
-    "browsermcp": {
-      "command": "npx",
-      "args": ["@browsermcp/mcp@latest"],
-      "env": { "API_KEY": "xxx" }
-    }
-  }
-}
-```
-→
-```toml
-[mcp_servers.browsermcp]
-command = "npx"
-args = ["@browsermcp/mcp@latest"]
-
-[mcp_servers.browsermcp.env]
-API_KEY = "xxx"
-```
-
-### MCP: JSON → Gemini settings.json
-Merge `.agentic/.mcp.json` contents into `.gemini/settings.json` under the `mcpServers` key. Preserve existing keys in settings.json.
-
-### Agents: MD ↔ Codex TOML
-
-MD → TOML (install):
-```markdown
----
-name: reviewer
-description: Reviews code for quality issues
----
-Review the code and flag issues...
-```
-→
-```toml
-name = "reviewer"
-description = "Reviews code for quality issues"
-developer_instructions = """
-Review the code and flag issues...
-"""
-```
-
-TOML → MD (inject):
-```toml
-name = "reviewer"
-description = "Reviews code for quality issues"
-developer_instructions = """
-Review the code and flag issues...
-"""
-```
-→
-```markdown
----
-name: reviewer
-description: Reviews code for quality issues
----
-Review the code and flag issues...
-```
-
-### MCP: Codex TOML → JSON (inject)
-```toml
-[mcp_servers.browsermcp]
-command = "npx"
-args = ["@browsermcp/mcp@latest"]
-
-[mcp_servers.browsermcp.env]
-API_KEY = "xxx"
-```
-→
-```json
-{
-  "mcpServers": {
-    "browsermcp": {
-      "command": "npx",
-      "args": ["@browsermcp/mcp@latest"],
-      "env": { "API_KEY": "xxx" }
-    }
-  }
-}
-```
-
-## Gitignore Management
-
-Install adds entries under a comment header:
-```gitignore
-# Claude Code (derived from .agentic/)
-/CLAUDE.md
-/.mcp.json
-.claude/skills
-.claude/agents
-.claude/settings.local.json
-```
-
-Uninstall removes them.
-
-## Tech Stack
-
-- TypeScript, compiled with `tsc` to JS
-- `commander.js` for CLI framework
-- `smol-toml` for TOML parsing/generation (Codex config translation)
-- `gray-matter` for YAML frontmatter parsing (agent MD files)
-- `package.json#bin` points to `dist/cli.js`
-- Dev: `tsx src/cli.ts` for fast iteration, `npm run build` before push
-
-## npm Publishing
-
-Use `package.json#files` (whitelist) only. Never use `.npmignore` — it silently replaces `.gitignore` and fails open (forgotten files get published). With `files`, forgotten files simply don't ship.
-
-Note: when users install from a GitHub URL (`npm install github:jesseminn/agentic`), npm may show a cosmetic `gitignore-fallback` warning even with `files` set. This is a known npm false positive — `files` still correctly controls what ships.
-
-```json
-{
-  "files": ["dist/"]
-}
-```
-
-## Project Structure
-
-```
-agentic/
-├── package.json
-├── tsconfig.json
-├── CLAUDE.md              # this file
-├── src/
-│   ├── cli.ts             # entry point, commander setup
-│   ├── commands/
-│   │   ├── init.ts
-│   │   ├── install.ts
-│   │   ├── uninstall.ts
-│   │   ├── inject.ts
-│   │   ├── eject.ts
-│   │   ├── update.ts
-│   │   ├── mcp.ts
-│   │   └── status.ts
-│   ├── lib/
-│   │   ├── platforms.ts   # platform definitions & mappings
-│   │   ├── symlink.ts     # safeLink, removeSymlink
-│   │   ├── gitignore.ts   # add/remove entries
-│   │   ├── templates.ts   # RULES.md template + managed-block + bundled-skill helpers
-│   │   └── translate.ts   # JSON↔TOML, MD↔TOML
-│   └── templates/
-│       ├── RULES.md       # bundled template — sentinel-delimited managed block + user-rules area
-│       └── skills/
-│           └── agentic-bootstrap/  # bundled skill; copied to .agentic/skills/ on init+update+inject
-```
-
-## Distribution
-
-- Not published to npm registry (for now)
-- Lives at github.com/jesseminn/agentic
-- Install: `npm i -D github:jesseminn/agentic` (project dev dependency) or `npm i -g github:jesseminn/agentic` (global)
-- Quick use: `npx github:jesseminn/agentic init`
+TypeScript → `tsc` → `dist/`. `commander`, `smol-toml`, `gray-matter`. Node ≥ 24. `npm run dev` = `tsx src/cli.ts`. Publish via `package.json#files` (whitelist) — never `.npmignore`. Bin is `agentic`; package name is `agentic`; repo is `jesseminn/agentic`.
 
 ## Git
 
 - Remote: `git@github_jesseminn:jesseminn/agentic.git` (SSH alias)
-- User: Jesse Chen <jesseminn@gmail.com>
+- User: Jesse Chen <jesseminn@gmail.com> (local git identity, keeps personal commits separate from work)

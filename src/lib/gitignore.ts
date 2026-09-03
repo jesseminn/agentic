@@ -18,6 +18,12 @@ export function addPlatformEntries(
   // Remove existing block for this platform if present
   content = removeBlock(content, mapping.gitignoreHeader);
 
+  // A platform with nothing to ignore gets no block at all
+  if (mapping.gitignoreEntries.length === 0) {
+    if (fs.existsSync(gitignorePath)) fs.writeFileSync(gitignorePath, content.trimEnd() + "\n");
+    return;
+  }
+
   // Append new block
   const block = [
     "",

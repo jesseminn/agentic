@@ -1,41 +1,90 @@
 import * as fs from "node:fs";
 import * as path from "node:path";
 
-export type PlatformId = "claude" | "gemini" | "codex";
+export type PlatformId = "claude" | "antigravity" | "codex";
+export const PLATFORM_IDS: readonly PlatformId[] = ["claude", "antigravity", "codex"];
+
+export function isPlatformId(s: string): s is PlatformId {
+  return (PLATFORM_IDS as readonly string[]).includes(s);
+}
 
 export interface PlatformMapping {
-  rules: { target: string };
-  skills: { target: string };
-  mcp: { type: "symlink" | "merge" | "translate"; target: string };
-  agents: { type: "symlink" | "translate"; target: string };
+  /** Platform config directory, e.g. `.claude`. */
+  configDir: string;
+  /** Root rules file at the project root, e.g. `CLAUDE.md`. Always generated. */
+  rulesRoot: string;
+  /** `import` — root file holds `@path` lines; `concat` — root file inlines content. */
+  rulesRootMode: "import" | "concat";
+  /** Prefix for an import line. */
+  importPrefix: string;
+  /**
+   * Auto-loaded rules directory (per-file links), or null when unverified —
+   * in which case rules/ and project/ files are folded into the root file.
+   */
+  rulesDir: string | null;
+  /** Per-directory skill links go here. */
+  skillsDir: string;
+  /**
+   * `link` — `<dir>/<name>.md` symlinks; `link-dir` — `<dir>/<name>/agent.md`
+   * symlinks; `translate` — generated TOML.
+   */
+  agentsDir: string;
+  agentsMode: "link" | "link-dir" | "translate";
+  /**
+   * `symlink` — link the file; `merge` — write the `mcpServers` key into a
+   * JSON file, preserving other keys; `translate` — generated TOML.
+   */
+  mcp: {
+    type: "symlink" | "merge" | "translate";
+    target: string;
+    /** Key dialect for remote servers; Antigravity wants `serverUrl`, not `type`+`url`. */
+    dialect?: "antigravity";
+  };
   gitignoreHeader: string;
   gitignoreEntries: string[];
 }
 
 export const PLATFORMS: Record<PlatformId, PlatformMapping> = {
   claude: {
-    rules: { target: "CLAUDE.md" },
-    skills: { target: ".claude/skills" },
+    configDir: ".claude",
+    rulesRoot: "CLAUDE.md",
+    rulesRootMode: "import",
+    importPrefix: "@",
+    rulesDir: ".claude/rules",
+    skillsDir: ".claude/skills",
+    agentsDir: ".claude/agents",
+    agentsMode: "link",
     mcp: { type: "symlink", target: ".mcp.json" },
-    agents: { type: "symlink", target: ".claude/agents" },
     gitignoreHeader: "# Claude Code (derived from .agentic/)",
-    gitignoreEntries: ["/CLAUDE.md", "/.mcp.json", ".claude/skills", ".claude/agents", ".claude/settings.local.json"],
+    gitignoreEntries: [".claude/settings.local.json", ".claude/worktrees/"],
   },
-  gemini: {
-    rules: { target: "GEMINI.md" },
-    skills: { target: ".gemini/skills" },
-    mcp: { type: "merge", target: ".gemini/settings.json" },
-    agents: { type: "symlink", target: ".gemini/agents" },
-    gitignoreHeader: "# Gemini CLI (derived from .agentic/)",
-    gitignoreEntries: ["/GEMINI.md", ".gemini/skills", ".gemini/agents", ".gemini/settings.json"],
+  // Antigravity CLI (`agy`, successor to Gemini CLI). Reads AGENTS.md and
+  // .agents/skills like Codex, so the two platforms share those files.
+  antigravity: {
+    configDir: ".agents",
+    rulesRoot: "AGENTS.md",
+    rulesRootMode: "concat",
+    importPrefix: "@",
+    rulesDir: null,
+    skillsDir: ".agents/skills",
+    agentsDir: ".agents/agents",
+    agentsMode: "link-dir",
+    mcp: { type: "merge", target: ".agents/mcp_config.json", dialect: "antigravity" },
+    gitignoreHeader: "# Antigravity CLI (derived from .agentic/)",
+    gitignoreEntries: [],
   },
   codex: {
-    rules: { target: "AGENTS.md" },
-    skills: { target: ".agents/skills" },
+    configDir: ".codex",
+    rulesRoot: "AGENTS.md",
+    rulesRootMode: "concat",
+    importPrefix: "@",
+    rulesDir: null,
+    skillsDir: ".agents/skills",
+    agentsDir: ".codex/agents",
+    agentsMode: "translate",
     mcp: { type: "translate", target: ".codex/config.toml" },
-    agents: { type: "translate", target: ".codex/agents" },
     gitignoreHeader: "# Codex CLI (derived from .agentic/)",
-    gitignoreEntries: ["/AGENTS.md", ".codex/config.toml", ".codex/agents/", ".agents/skills"],
+    gitignoreEntries: [],
   },
 };
 
@@ -46,22 +95,21 @@ export function getAgenticDir(cwd: string): string {
 }
 
 export function requireAgenticDir(cwd: string): void {
-  const dir = getAgenticDir(cwd);
-  if (!fs.existsSync(dir)) {
+  if (!fs.existsSync(getAgenticDir(cwd))) {
     console.error(
-      `Error: ${AGENTIC_DIR}/ not found. Run \`agentic init\` first.`
+      `Error: ${AGENTIC_DIR}/ not found. Run \`agentic install <harness>\` or \`agentic init\` first.`
     );
     process.exit(1);
   }
 }
 
-export function getInstalledPlatforms(cwd: string): PlatformId[] {
-  const installed: PlatformId[] = [];
-  for (const [id, mapping] of Object.entries(PLATFORMS)) {
-    const rulesPath = path.join(cwd, mapping.rules.target);
-    if (fs.existsSync(rulesPath)) {
-      installed.push(id as PlatformId);
-    }
-  }
-  return installed;
+/**
+ * Paths under `cwd` that `link` would create for a platform — used so
+ * `unlink` never removes a file another linked platform still needs.
+ */
+export function platformPaths(platform: PlatformId): string[] {
+  const m = PLATFORMS[platform];
+  return [m.rulesRoot, m.rulesDir, m.skillsDir, m.agentsDir, m.mcp.target].filter(
+    (p): p is string => p !== null
+  );
 }

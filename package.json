@@ -1,7 +1,7 @@
 {
   "name": "agentic",
   "version": "0.2.0",
-  "description": "Manage cross-platform AI agent configuration from a single .agentic/ directory",
+  "description": "Seed an agentic harness into .agentic/ and link it into Claude Code, Antigravity CLI, and Codex CLI config",
   "type": "module",
   "files": [
     "dist/"
@@ -10,8 +10,9 @@
     "agentic": "dist/cli.js"
   },
   "scripts": {
-    "build": "tsc && cp -r src/templates dist/",
+    "build": "tsc",
     "dev": "tsx src/cli.ts",
+    "test": "npm run build && node --test test/*.test.mjs",
     "prepare": "npm run build"
   },
   "engines": {

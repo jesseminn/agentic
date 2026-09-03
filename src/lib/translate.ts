@@ -9,9 +9,11 @@ export interface McpConfig {
 }
 
 export interface McpServerEntry {
-  command: string;
+  command?: string;
   args?: string[];
   env?: Record<string, string>;
+  type?: string;
+  url?: string;
   [key: string]: unknown;
 }
 
@@ -22,6 +24,10 @@ export function mcpJsonToToml(mcpJson: McpConfig): string {
   const servers = tomlObj.mcp_servers as Record<string, unknown>;
 
   for (const [name, entry] of Object.entries(mcpJson.mcpServers)) {
+    if (entry.url) {
+      servers[name] = { url: entry.url };
+      continue;
+    }
     const server: Record<string, unknown> = { command: entry.command };
     if (entry.args) server.args = entry.args;
     if (entry.env) server.env = entry.env;
@@ -42,6 +48,10 @@ export function mcpTomlToJson(tomlContent: string): McpConfig {
   >;
 
   for (const [name, entry] of Object.entries(servers)) {
+    if (entry.url) {
+      mcpServers[name] = { type: "http", url: entry.url as string };
+      continue;
+    }
     mcpServers[name] = {
       command: entry.command as string,
       ...(entry.args ? { args: entry.args as string[] } : {}),
@@ -76,9 +86,9 @@ export function agentTomlToMd(tomlContent: string): string {
   return matter.stringify(body.trim() + "\n", frontmatter);
 }
 
-// --- Gemini: merge MCP into settings.json ---
+// --- JSON merge: write mcpServers into a JSON file, keep other keys ---
 
-export function mergeGeminiSettings(
+export function mergeMcpServers(
   settingsPath: string,
   mcpJson: McpConfig
 ): void {
@@ -92,9 +102,9 @@ export function mergeGeminiSettings(
   fs.writeFileSync(settingsPath, JSON.stringify(settings, null, 2) + "\n");
 }
 
-// --- Gemini: extract MCP from settings.json ---
+// --- JSON extract: read mcpServers from a JSON file ---
 
-export function extractGeminiMcp(settingsPath: string): McpConfig {
+export function extractMcpServers(settingsPath: string): McpConfig {
   if (!fs.existsSync(settingsPath)) {
     return { mcpServers: {} };
   }
@@ -115,4 +125,32 @@ export function readMcpJson(mcpJsonPath: string): McpConfig {
 
 export function writeMcpJson(mcpJsonPath: string, config: McpConfig): void {
   fs.writeFileSync(mcpJsonPath, JSON.stringify(config, null, 2) + "\n");
+}
+
+// --- Antigravity: remote servers use `serverUrl` instead of `type`/`url` ---
+
+export function mcpJsonToAntigravity(config: McpConfig): McpConfig {
+  const mcpServers: Record<string, McpServerEntry> = {};
+  for (const [name, entry] of Object.entries(config.mcpServers)) {
+    if (entry.url) {
+      const { type: _type, url, ...rest } = entry;
+      mcpServers[name] = { ...rest, serverUrl: url } as McpServerEntry;
+    } else {
+      mcpServers[name] = entry;
+    }
+  }
+  return { mcpServers };
+}
+
+export function mcpAntigravityToJson(config: McpConfig): McpConfig {
+  const mcpServers: Record<string, McpServerEntry> = {};
+  for (const [name, entry] of Object.entries(config.mcpServers)) {
+    if (typeof entry.serverUrl === "string") {
+      const { serverUrl, ...rest } = entry;
+      mcpServers[name] = { type: "http", url: serverUrl, ...rest } as McpServerEntry;
+    } else {
+      mcpServers[name] = entry;
+    }
+  }
+  return { mcpServers };
 }

@@ -1,93 +1,63 @@
 import * as fs from "node:fs";
 import * as path from "node:path";
-import {
-  requireAgenticDir,
-  PLATFORMS,
-  type PlatformId,
-} from "../lib/platforms.js";
-import { removeSymlink } from "../lib/symlink.js";
-import { removePlatformEntries } from "../lib/gitignore.js";
+import { getAgenticDir } from "../lib/platforms.js";
+import { requireHarness, writeLock, hashFile, hashJson } from "../lib/lock.js";
+import { readMcpJson, writeMcpJson } from "../lib/translate.js";
+import { linkPlatform } from "../lib/linker.js";
+import { printLinkReport } from "./link.js";
+import { pruneEmptyDirs } from "./update.js";
 
-export function uninstallCommand(cwd: string, platform: PlatformId): void {
-  requireAgenticDir(cwd);
+/**
+ * Remove the harness from .agentic/: every lock-listed file and MCP key.
+ * A harness file that was modified locally is kept and reported, never
+ * deleted. Project-owned files and seeds are not touched. The lock stays,
+ * with `harness: null`, so linked platforms remain recorded.
+ */
+export function uninstallCommand(cwd: string): void {
+  const { lock, harness } = requireHarness(cwd);
+  const agenticDir = getAgenticDir(cwd);
+  const removed: string[] = [];
+  const kept: string[] = [];
 
-  const mapping = PLATFORMS[platform];
-
-  // Rules: remove symlink
-  removeSymlink(path.join(cwd, mapping.rules.target));
-  console.log(`  Removed ${mapping.rules.target}`);
-
-  // Skills: remove symlink
-  removeSymlink(path.join(cwd, mapping.skills.target));
-  console.log(`  Removed ${mapping.skills.target}`);
-
-  // MCP
-  const mcpTarget = path.join(cwd, mapping.mcp.target);
-  switch (mapping.mcp.type) {
-    case "symlink":
-      removeSymlink(mcpTarget);
-      console.log(`  Removed ${mapping.mcp.target}`);
-      break;
-    case "merge":
-      // Remove mcpServers key from settings.json
-      if (fs.existsSync(mcpTarget)) {
-        const settings = JSON.parse(fs.readFileSync(mcpTarget, "utf-8"));
-        delete settings.mcpServers;
-        if (Object.keys(settings).length === 0) {
-          fs.unlinkSync(mcpTarget);
-        } else {
-          fs.writeFileSync(mcpTarget, JSON.stringify(settings, null, 2) + "\n");
-        }
-        console.log(`  Removed MCP from ${mapping.mcp.target}`);
-      }
-      break;
-    case "translate":
-      if (fs.existsSync(mcpTarget)) {
-        fs.unlinkSync(mcpTarget);
-        console.log(`  Removed ${mapping.mcp.target}`);
-      }
-      break;
-  }
-
-  // Agents
-  const agentsTarget = path.join(cwd, mapping.agents.target);
-  switch (mapping.agents.type) {
-    case "symlink":
-      removeSymlink(agentsTarget);
-      console.log(`  Removed ${mapping.agents.target}`);
-      break;
-    case "translate":
-      // Remove generated .toml files
-      if (fs.existsSync(agentsTarget)) {
-        for (const file of fs.readdirSync(agentsTarget)) {
-          if (file.endsWith(".toml")) {
-            fs.unlinkSync(path.join(agentsTarget, file));
-          }
-        }
-        removeIfEmpty(agentsTarget);
-        console.log(`  Removed ${mapping.agents.target}`);
-      }
-      break;
-  }
-
-  // Gitignore
-  removePlatformEntries(cwd, platform);
-
-  // Clean up empty parent directories
-  for (const dir of [".claude", ".gemini", ".codex", ".agents"]) {
-    removeIfEmpty(path.join(cwd, dir));
-  }
-
-  console.log(`\nUninstalled ${platform}.`);
-}
-
-function removeIfEmpty(dir: string): void {
-  try {
-    const entries = fs.readdirSync(dir);
-    if (entries.length === 0) {
-      fs.rmdirSync(dir);
+  for (const [rel, lockHash] of Object.entries(lock.files)) {
+    const p = path.join(agenticDir, rel);
+    if (!fs.existsSync(p)) continue;
+    if (hashFile(p) === lockHash) {
+      fs.unlinkSync(p);
+      pruneEmptyDirs(agenticDir, path.dirname(rel));
+      removed.push(rel);
+    } else {
+      kept.push(`${rel} (modified locally)`);
     }
-  } catch {
-    // directory doesn't exist, fine
+  }
+
+  const mcpPath = path.join(agenticDir, ".mcp.json");
+  const mcp = readMcpJson(mcpPath);
+  for (const [key, lockHash] of Object.entries(lock.mcpServers)) {
+    const entry = mcp.mcpServers[key];
+    if (entry === undefined) continue;
+    if (hashJson(entry) === lockHash) {
+      delete mcp.mcpServers[key];
+      removed.push(`.mcp.json#${key}`);
+    } else {
+      kept.push(`.mcp.json#${key} (modified locally)`);
+    }
+  }
+  writeMcpJson(mcpPath, mcp);
+
+  lock.harness = null;
+  lock.files = {};
+  lock.mcpServers = {};
+  writeLock(cwd, lock);
+
+  console.log(`Uninstalled ${harness.name}@${harness.version}`);
+  console.log(`  removed: ${removed.length}`);
+  if (kept.length) {
+    console.log(`  kept (now project-owned):`);
+    for (const k of kept) console.log(`    ${k}`);
+  }
+
+  for (const platform of lock.platforms) {
+    printLinkReport(linkPlatform(cwd, platform));
   }
 }
