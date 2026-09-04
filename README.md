@@ -102,7 +102,7 @@ Anything in `.agentic/` not in the lock is project-owned and invisible to `updat
 A harness is a repo with this shape:
 
 ```
-harness.json            { "name": "...", "version": "...", "protocol": "1.1" }
+harness.json            { "name": "...", "version": "...", "protocol": "2.0.0" }
 rules/COMMON.md         who the agent is — role, style, conventions shared across projects; short
 references/<doc>.md     workflow docs that skills cite — cite them root-relative: .agentic/references/<doc>.md
 skills/<name>/SKILL.md  Agent Skills format; a namespace prefix keeps harness skills clear of platform built-ins
@@ -111,9 +111,45 @@ mcps.json               MCP servers; env values as ${NAME}, never literals
 rules/PROJECT.md        optional seed for the project's own context — copied once, then the project's
 ```
 
-`protocol` is the version of this shape, separate from your own `version`; a `harness.json` without it is on 1.0. The tool reads exactly one protocol and refuses a harness on another, so a shape change is a harness change you make once, deliberately. A *project* on an older protocol is brought forward by `agentic migrate` — a deterministic, reviewable diff of project-owned files and derived links; `install` and `update` run it first.
+`protocol` is the version of this shape, separate from your own `version`. See [Harness protocol](#harness-protocol).
 
 Not part of a harness: hooks (every client has its own model), platform-specific mechanisms (plugins, output styles), and project-specific content beyond the seeds.
+
+## Harness protocol
+
+The shape of `.agentic/` is a contract between three parties: the harness you install, the project it lands in, and this tool. It is versioned separately from both the harness's own `version` and this package's version.
+
+- `harness.json` declares the protocol a harness is written for.
+- `.agentic/agentic.lock` records the protocol a project's `.agentic/` is in.
+- A missing field in either means `1.0.0`, the shape that shipped before the field existed.
+
+To see which protocol a build reads, ask it:
+
+```bash
+$ agentic --version
+2.0.0 (harness protocol 2.0.0)
+```
+
+`agentic status` reports the project's protocol, and names the tool's when the two differ.
+
+### Compatibility
+
+The protocol is semver, and the rules follow from that. MAJOR is a shape change. MINOR is additive, such as a new optional directory. PATCH never changes the contract.
+
+| harness against tool | result |
+|---|---|
+| different MAJOR | refused: migrate the harness, or upgrade agentic |
+| same MAJOR, higher MINOR | refused: the harness uses something this build does not know — upgrade agentic |
+| same MAJOR, same or lower MINOR | accepted |
+
+A **project** behind the tool is migrated rather than refused. `agentic migrate` applies each recorded step, and `install` and `update` run it first. Only a MAJOR bump moves files; a MINOR bump restamps the lock.
+
+### History
+
+| protocol | agentic | change |
+|---|---|---|
+| 1.0.0 | 1.0.x | `RULES.md`, `rules/<topic>.md`, `PROJECT.md`, `project/<topic>.md` |
+| 2.0.0 | 2.0.0 and later | `rules/` holds exactly `COMMON.md` (harness-owned) and `PROJECT.md` (seed-once). Topic rules removed: no client loads them lazily, so procedure belongs in skills. |
 
 ## Releasing
 

@@ -4,7 +4,7 @@ import { requireAgenticDir, getAgenticDir, AGENTIC_DIR, PLATFORMS } from "../lib
 import { flattenSymlink, isLinkInto } from "../lib/symlink.js";
 import { removeAllAgenticEntries } from "../lib/gitignore.js";
 import { readLock } from "../lib/lock.js";
-import { requireCurrentProtocol } from "../lib/migrate.js";
+import { requireCompatibleProtocol } from "../lib/migrate.js";
 import { isGenerated } from "../lib/generated.js";
 import { renderRoot } from "../lib/linker.js";
 
@@ -15,7 +15,7 @@ import { renderRoot } from "../lib/linker.js";
  */
 export function ejectCommand(cwd: string): void {
   requireAgenticDir(cwd);
-  requireCurrentProtocol(cwd);
+  requireCompatibleProtocol(cwd);
   const agenticDir = getAgenticDir(cwd);
   const platforms = readLock(cwd)?.platforms ?? [];
 

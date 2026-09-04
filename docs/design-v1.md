@@ -48,7 +48,7 @@ Two ownership tiers inside the shape:
 
 Ownership is per file, so the two rules files share a directory without sharing an owner; `status` reports `rules/ 2 (1 harness, 1 project)`. If the harness ships no `rules/PROJECT.md`, `install` creates an empty stub. The slot always exists because `link` always loads it.
 
-**Protocol.** `harness.json.protocol` is the version of this shape — `"1.1"` for the shape above — and is distinct from the harness's own `version` (its content) and from the tool's package version. A `harness.json` without the field is on 1.0, the shape the tool's v1.0.0 shipped. The tool reads exactly one protocol and refuses a harness on another; a project on an older protocol is migrated by the tool (§6, `migrate`).
+**Protocol.** `harness.json.protocol` is the version of this shape, `"2.0.0"` for the shape above, distinct from the harness's own `version` (its content) and from the tool's package version. A `harness.json` without the field is on `1.0.0`, the shape the tool's v1.0.0 shipped. It is semver: MAJOR changes the shape, MINOR adds something optional, PATCH never changes the contract. A harness is accepted when its MAJOR matches the tool's and its MINOR is no higher; otherwise the tool says whether to migrate the harness or upgrade itself. A project on an older MAJOR is migrated by the tool (§6, `migrate`). The README carries the protocol history table, and `agentic --version` prints the protocol beside the tool version.
 
 **Not part of a harness:**
 
@@ -95,7 +95,7 @@ Ownership is recorded, not inferred. `install` writes the lock; `update` reads a
 
 ```json
 {
-  "protocol": "1.1",
+  "protocol": "2.0.0",
   "harness": {
     "name": "my-harness",
     "version": "1.4.0",
@@ -131,7 +131,7 @@ The lock is committed. A test pull from a local checkout is just uncommitted wor
 
 `file://`, `git@`, `https://`, `ssh://`, `git://`, and `github:owner/repo` are cloned (`--depth 1 --branch <ref>`; a commit sha falls back to a full clone + checkout). Anything else is a path.
 
-1. Migrate the project if its lock — or, without one, its layout — is on an older protocol. Fetch the harness. Validate `harness.json` (its `protocol` must be the current one) and the shape.
+1. Migrate the project if its lock, or without one its layout, is on an older protocol MAJOR. Fetch the harness. Validate `harness.json` (its `protocol` must be compatible: same MAJOR, no higher MINOR) and the shape.
 2. Compare every harness-owned path with the local tree. A path that already exists with **different** content is a conflict: report all of them and abort with nothing written. Identical content is adopted — this is how a v0.2 project migrates.
 3. Copy harness-owned files. Copy seed-once files only where absent; create an empty `rules/PROJECT.md` if the harness has none.
 4. Merge `mcps.json` entries into `.agentic/.mcp.json` (same conflict rule per key).
@@ -205,9 +205,9 @@ Report: harness name, version, commit, source; harness drift (lock-listed files 
 
 ### `agentic migrate`
 
-Bring `.agentic/` from the protocol in its lock up to the tool's, one recorded step at a time, then stamp the lock and re-run `link` for every recorded platform. A lock-less `.agentic/` that still carries a 1.0 path counts as 1.0. Each step is a deterministic transform of project-owned content and derived files, reported line by line; a harness-owned path is named and left for `update`, which replaces it from a harness on the new protocol. `install` and `update` run this first; every other command stops on a stale lock and says to run it. Migrating a *harness* is the author's job — folding a topic rule into `COMMON.md` or turning it into a skill is a judgment — so the tool validates and hints, never rewrites one.
+Bring `.agentic/` from the protocol in its lock up to the tool's, one recorded MAJOR step at a time, then stamp the lock and re-run `link` for every recorded platform. Steps are keyed on MAJOR because only a MAJOR moves files; a MINOR difference is a restamp with no reported lines. A lock-less `.agentic/` that still carries a protocol-1 path counts as `1.0.0`. Each step is a deterministic transform of project-owned content and derived files, reported line by line; a harness-owned path is named and left for `update`, which replaces it from a harness on the new protocol. `install` and `update` run this first; every other command stops when the MAJOR differs and says to run it. Migrating a *harness* is the author's job, since folding a topic rule into `COMMON.md` or turning it into a skill is a judgment, so the tool validates and hints, never rewrites one.
 
-The 1.0 → 1.1 step: `RULES.md → rules/COMMON.md`, `PROJECT.md → rules/PROJECT.md`; each project-owned `rules/<topic>.md` and `project/<topic>.md` appended to `rules/PROJECT.md` under `## <topic>` with a comment naming its source, then removed; per-file rule links v1.0 wrote into `.claude/rules/` removed, real files there kept.
+The protocol 1 to 2 step: `RULES.md → rules/COMMON.md`, `PROJECT.md → rules/PROJECT.md`; each project-owned `rules/<topic>.md` and `project/<topic>.md` appended to `rules/PROJECT.md` under `## <topic>` with a comment naming its source, then removed; per-file rule links v1.0 wrote into `.claude/rules/` removed, real files there kept.
 
 ### `agentic init`
 
@@ -236,7 +236,9 @@ Everything else in the project belongs to the user. `install`, `update`, `uninst
 
 **Per-entry links.** The only way a project can hold a platform-specific skill next to shared ones. Cost: reconciliation logic in `link` (§6). Worth it.
 
-**Versioned protocol.** The shape in §3 is a contract between a harness, a project's `.agentic/`, and the tool; changing it — as 1.1 does — has to move all three. Without a version the tool can only guess at a project's state from which files exist, and compatibility shims collect in whichever module happens to notice (the first draft of 1.1 put a `legacyRulesDir` in the platform table — a migration step hiding in a platform description). With `protocol` in `harness.json` and in the lock, the check is one comparison in one place, a harness on the wrong shape fails before any file is read, and every project migration is an explicit, recorded, reviewable step in `lib/migrate.ts`. "Absent means 1.0" is what makes it retroactive: nothing already shipped has to change to become versioned.
+**Semver, and a compatibility rule that honors it.** Three fields only pay for themselves if MINOR and PATCH mean something. The first draft refused any protocol that was not exactly the tool's, which makes the extra digits decoration: a harness on 2.0.0 would fail against a tool on 2.1.0 even though 2.1 is by definition backward compatible. So compatibility is same-MAJOR-and-no-higher-MINOR, and migration steps are keyed on MAJOR. This also fixes the number: moving `RULES.md` and deleting a whole tier is breaking, so the shape below is protocol 2.0.0, not 1.1.
+
+**Versioned protocol.** The shape in §3 is a contract between a harness, a project's `.agentic/`, and the tool; changing it, as protocol 2.0.0 does, has to move all three. Without a version the tool can only guess at a project's state from which files exist, and compatibility shims collect in whichever module happens to notice (the first draft of this change put a `legacyRulesDir` in the platform table — a migration step hiding in a platform description). With `protocol` in `harness.json` and in the lock, the check is one comparison in one place, a harness on the wrong shape fails before any file is read, and every project migration is an explicit, recorded, reviewable step in `lib/migrate.ts`. "Absent means 1.0" is what makes it retroactive: nothing already shipped has to change to become versioned.
 
 **Two rules files, no topic rules.** v1.0 had `RULES.md` + `rules/<topic>.md` + `PROJECT.md` + `project/<topic>.md`, with the topic files linked one by one into `.claude/rules/`. Tested against each client on 2026-09-03: Claude Code expands `@` imports at launch — its docs say imports "help organization but don't reduce context" — and lazy-loads only a `.claude/rules/` file that carries `paths:` frontmatter; Codex CLI and Antigravity CLI follow neither an `@` import nor a markdown link from `AGENTS.md`; Antigravity CLI does not load `.agents/rules/` at all (a real file there was as invisible as a symlink). So a topic rule is always-on on two of three platforms, and could be lazy on the third only with path scoping the harness format never had. Skills are lazy everywhere. Collapsing to `COMMON.md` (harness: who the agent is) and `PROJECT.md` (project: its context) makes the ownership boundary the content boundary and pushes everything procedural into skills. The root file carries COMMON then PROJECT, because every client gives later content precedence, so a project can override a harness default. `status` warns past 200 lines — Claude Code's documented adherence cliff.
 
@@ -262,11 +264,11 @@ Everything else in the project belongs to the user. `install`, `update`, `uninst
 
 ## 9. Migration
 
-### From protocol 1.0 (tool v1.0.0)
+### From protocol 1.0.0 (tool v1.0.x)
 
 The shape changed: `RULES.md` → `rules/COMMON.md`, `PROJECT.md` → `rules/PROJECT.md`; `rules/<topic>.md` and `project/<topic>.md` are gone.
 
-1. Harness repo, by hand: `git mv RULES.md rules/COMMON.md` and `git mv PROJECT.md rules/PROJECT.md`. Fold each `rules/<topic>.md` and `project/<topic>.md` into one of the two, or turn it into a skill. Set `"protocol": "1.1"` in `harness.json` and bump its `version`. Until then the tool refuses the harness, naming both protocols.
+1. Harness repo, by hand: `git mv RULES.md rules/COMMON.md` and `git mv PROJECT.md rules/PROJECT.md`. Fold each `rules/<topic>.md` and `project/<topic>.md` into one of the two, or turn it into a skill. Set `"protocol": "2.0.0"` in `harness.json` and bump its `version`. Until then the tool refuses the harness, naming both protocols.
 2. Each project: `agentic update`. The project is migrated first — its own root files moved, its topic files folded into `rules/PROJECT.md`, v1.0 links under `.claude/rules/` removed — then the harness reconciles: `RULES.md` and harness topic files are deleted, `rules/COMMON.md` added. A project with no harness runs `agentic migrate`. Review the diff, commit.
 
 ### From v0.2

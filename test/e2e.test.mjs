@@ -77,7 +77,7 @@ function makeHarness(dir, v = 1) {
       if (name !== ".git") fs.rmSync(path.join(dir, name), { recursive: true, force: true });
     }
   }
-  write(dir, "harness.json", JSON.stringify({ name: "fixture", version: `${v}.0.0`, protocol: "1.1" }));
+  write(dir, "harness.json", JSON.stringify({ name: "fixture", version: `${v}.0.0`, protocol: "2.0.0" }));
   write(dir, "rules/COMMON.md", `# Team rules v${v}\n\nRead .agentic/references/workflow.md.\n`);
   write(dir, "references/workflow.md", `# Workflow v${v}\n`);
   write(dir, "rules/PROJECT.md", "# Project (seed)\n");
@@ -122,7 +122,7 @@ test("install + link claude derives a tracked, per-entry layout", () => {
   assert.ok(!exists(project, ".agentic/project"), "no project/ in the shape");
 
   const l = lock(project);
-  assert.equal(l.protocol, "1.1");
+  assert.equal(l.protocol, "2.0.0");
   assert.equal(l.harness.name, "fixture");
   assert.deepEqual(Object.keys(l.files).sort(), [
     "agents/reviewer.md",
@@ -154,7 +154,7 @@ test("install + link claude derives a tracked, per-entry layout", () => {
   assert.deepEqual(lock(project).platforms, ["claude"]);
 
   const st = ok(project, "status");
-  assert.match(st, /Protocol: 1\.1/);
+  assert.match(st, /Protocol: 2\.0\.0/);
   assert.match(st, /rules\/\s+2 \(1 harness, 1 project\)/);
   ok(project, "link", "claude"); // idempotent
 });
@@ -357,11 +357,11 @@ test("v0.2 whole-directory symlinks migrate to per-entry links", () => {
 
   // no lock + the old paths ⇒ protocol 1.0: install migrates first, then adopts everything as identical
   const inst = ok(project, "install", harness);
-  assert.match(inst, /Migrated \.agentic\/ from protocol 1\.0 to 1\.1/);
+  assert.match(inst, /Migrated \.agentic\/ from protocol 1\.0\.0 to 2\.0\.0/);
   assert.match(inst, /RULES\.md → rules\/COMMON\.md/);
   assert.match(inst, /PROJECT\.md → rules\/PROJECT\.md/);
   assert.match(inst, /4 harness files \(7 already present, adopted\)/, "4 files + 3 MCP keys, all identical");
-  assert.equal(lock(project).protocol, "1.1");
+  assert.equal(lock(project).protocol, "2.0.0");
   const out = ok(project, "link", "claude");
   assert.match(out, /CLAUDE\.md \(whole-file symlink from v0\.2\)/);
   assert.match(out, /\.claude\/skills \(whole-directory symlink from v0\.2\)/);
@@ -562,7 +562,7 @@ test("init creates a harness-less .agentic that links", () => {
   fail(project, "init");
   assert.ok(exists(project, ".agentic/rules/COMMON.md") && exists(project, ".agentic/rules/PROJECT.md"));
   assert.ok(!exists(project, ".agentic/RULES.md") && !exists(project, ".agentic/project"), "no protocol-1.0 paths");
-  assert.equal(lock(project).protocol, "1.1");
+  assert.equal(lock(project).protocol, "2.0.0");
   write(project, ".agentic/skills/mine/SKILL.md", "---\nname: mine\n---\n");
   ok(project, "link", "claude");
   assert.ok(isLink(project, ".claude/skills/mine"));
@@ -604,11 +604,21 @@ test("rules/ holds only COMMON.md and PROJECT.md; the v1.0 shape is a conflict w
 
   // a harness on another protocol, or with extra rules files, is rejected before anything is written
   const old = makeHarness(tmp("old"));
-  write(old, "harness.json", JSON.stringify({ name: "fixture", version: "1.0.0" })); // no protocol ⇒ 1.0
+  write(old, "harness.json", JSON.stringify({ name: "fixture", version: "1.0.0" })); // no protocol ⇒ 1.0.0
   const p2 = freshProject("proj2");
-  assert.match(fail(p2, "install", old), /protocol 1\.0 — this agentic reads protocol 1\.1/);
-  write(old, "harness.json", JSON.stringify({ name: "fixture", version: "1.0.0", protocol: "9.0" }));
+  const older = fail(p2, "install", old);
+  assert.match(older, /protocol 1\.0\.0 is not compatible with protocol 2\.0\.0/);
+  assert.match(older, /migrate the harness/);
+  // same MAJOR, higher MINOR: the harness uses something this build does not know
+  write(old, "harness.json", JSON.stringify({ name: "fixture", version: "1.0.0", protocol: "2.1.0" }));
   assert.match(fail(p2, "install", old), /upgrade agentic/);
+  write(old, "harness.json", JSON.stringify({ name: "fixture", version: "1.0.0", protocol: "3.0.0" }));
+  assert.match(fail(p2, "install", old), /upgrade agentic/);
+  // same MAJOR, lower-or-equal MINOR and any PATCH: accepted (its own project — p2 must stay empty)
+  write(old, "harness.json", JSON.stringify({ name: "fixture", version: "1.0.0", protocol: "2.0.9" }));
+  const p3 = freshProject("proj3");
+  ok(p3, "install", old);
+  assert.equal(lock(p3).protocol, "2.0.0", "the lock records the tool's protocol, not the harness's");
   const extra = makeHarness(tmp("extra"));
   write(extra, "rules/style.md", "# style\n");
   assert.match(fail(p2, "install", extra), /rules\/style\.md: rules\/ holds only/);
@@ -635,13 +645,13 @@ test("migrate: a protocol-1.0 project is refused by link/status/unlink and moved
   for (const args of [["link", "claude"], ["status"], ["unlink", "claude"]]) {
     const r = cli(project, ...args);
     assert.equal(r.status, 1, args.join(" "));
-    assert.match(r.out, /on protocol 1\.0; this agentic reads 1\.1/);
+    assert.match(r.out, /on protocol 1\.0\.0; this agentic reads 2\.0\.0/);
     assert.match(r.out, /agentic migrate/);
   }
   assert.ok(exists(project, ".agentic/RULES.md"), "refused, not touched");
 
   const out = ok(project, "migrate");
-  assert.match(out, /Migrated \.agentic\/ from protocol 1\.0 to 1\.1/);
+  assert.match(out, /Migrated \.agentic\/ from protocol 1\.0\.0 to 2\.0\.0/);
   assert.match(out, /RULES\.md → rules\/COMMON\.md/);
   assert.match(out, /PROJECT\.md → rules\/PROJECT\.md/);
   assert.match(out, /rules\/style\.md folded into rules\/PROJECT\.md as "## style"/);
@@ -651,18 +661,18 @@ test("migrate: a protocol-1.0 project is refused by link/status/unlink and moved
   assert.ok(!exists(project, ".agentic/rules/style.md") && !exists(project, ".agentic/project"));
   const pr = read(project, ".agentic/rules/PROJECT.md");
   assert.match(pr, /^# My project\n/);
-  assert.match(pr, /## style\n<!-- migrated from \.agentic\/rules\/style\.md \(protocol 1\.0 → 1\.1\) -->\n# Style\n\nTabs\./);
+  assert.match(pr, /## style\n<!-- migrated from \.agentic\/rules\/style\.md \(protocol 1 to 2\) -->\n# Style\n\nTabs\./);
   assert.match(pr, /## domain\n<!-- migrated from \.agentic\/project\/domain\.md .*-->\n# Domain\n\nOrders\./);
   assert.ok(!exists(project, ".claude/rules/style.md"));
   assert.match(read(project, ".claude/rules/mine.md"), /# mine/, "a real rules file is the project's");
-  assert.equal(lock(project).protocol, "1.1");
+  assert.equal(lock(project).protocol, "2.0.0");
   assert.equal(
     read(project, "CLAUDE.md").split("\n").slice(1).join("\n"),
     "@.agentic/rules/COMMON.md\n@.agentic/rules/PROJECT.md\n",
     "recorded platforms re-linked"
   );
   ok(project, "status");
-  assert.match(ok(project, "migrate"), /Already on protocol 1\.1/);
+  assert.match(ok(project, "migrate"), /Already on protocol 2\.0\.0/);
 });
 
 test("update migrates a protocol-1.0 lock first, then reconciles harness-owned files", () => {
@@ -680,14 +690,14 @@ test("update migrates a protocol-1.0 lock first, then reconciles harness-owned f
   write(project, ".agentic/agentic.lock", JSON.stringify(l, null, 2) + "\n");
 
   const out = ok(project, "update");
-  assert.match(out, /Migrated \.agentic\/ from protocol 1\.0 to 1\.1/);
+  assert.match(out, /Migrated \.agentic\/ from protocol 1\.0\.0 to 2\.0\.0/);
   assert.match(out, /RULES\.md is harness-owned/);
   assert.match(out, /added: 1\n\s+rules\/COMMON\.md/);
   assert.match(out, /removed: 1\n\s+RULES\.md/);
   assert.ok(!exists(project, ".agentic/RULES.md"));
   assert.equal(read(project, ".agentic/rules/COMMON.md"), "# Team rules v1\n\nRead .agentic/references/workflow.md.\n");
   const l2 = lock(project);
-  assert.equal(l2.protocol, "1.1");
+  assert.equal(l2.protocol, "2.0.0");
   assert.ok("rules/COMMON.md" in l2.files && !("RULES.md" in l2.files));
   ok(project, "status");
 });
@@ -701,4 +711,19 @@ test("status warns, without failing, when the two rules files pass 200 lines", (
   const s = cli(project, "status");
   assert.equal(s.status, 0, "size is advice, not drift");
   assert.match(s.out, /over 200/);
+});
+
+test("--version names the protocol; a MINOR-behind lock is restamped, not migrated", () => {
+  const project = freshProject("proj");
+  ok(project, "init");
+  assert.match(ok(project, "--version"), /^\d+\.\d+\.\d+ \(harness protocol 2\.0\.0\)/);
+
+  // a lock one MINOR behind: same shape, so commands work and migrate only restamps
+  const l = lock(project);
+  l.protocol = "2.0.0";
+  write(project, ".agentic/agentic.lock", JSON.stringify({ ...l, protocol: "1.9.0" }, null, 2) + "\n");
+  assert.equal(cli(project, "status").status, 1, "a different MAJOR is refused");
+
+  write(project, ".agentic/agentic.lock", JSON.stringify({ ...l, protocol: "2.0.0" }, null, 2) + "\n");
+  ok(project, "status");
 });

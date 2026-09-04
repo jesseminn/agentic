@@ -1,10 +1,10 @@
 import { requireAgenticDir, type PlatformId } from "../lib/platforms.js";
 import { linkPlatform, unlinkPlatform, type LinkReport } from "../lib/linker.js";
-import { requireCurrentProtocol } from "../lib/migrate.js";
+import { requireCompatibleProtocol } from "../lib/migrate.js";
 
 export function linkCommand(cwd: string, platform: PlatformId): void {
   requireAgenticDir(cwd);
-  requireCurrentProtocol(cwd);
+  requireCompatibleProtocol(cwd);
   const report = linkPlatform(cwd, platform);
   printLinkReport(report);
   if (report.conflicts.length > 0) process.exit(1);
@@ -12,7 +12,7 @@ export function linkCommand(cwd: string, platform: PlatformId): void {
 
 export function unlinkCommand(cwd: string, platform: PlatformId): void {
   requireAgenticDir(cwd);
-  requireCurrentProtocol(cwd);
+  requireCompatibleProtocol(cwd);
   const report = unlinkPlatform(cwd, platform);
   console.log(`Unlinked ${platform}`);
   for (const r of report.removed) console.log(`  removed ${r}`);

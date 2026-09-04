@@ -15,6 +15,7 @@ import { injectCommand } from "./commands/inject.js";
 import { ejectCommand } from "./commands/eject.js";
 import { migrateCommand } from "./commands/migrate.js";
 import { isPlatformId, PLATFORM_IDS, type PlatformId } from "./lib/platforms.js";
+import { CURRENT_PROTOCOL } from "./lib/protocol.js";
 
 const cwd = process.cwd();
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -30,7 +31,7 @@ function platformArg(s: string): PlatformId {
 
 program
   .name("agentic")
-  .version(pkg.version)
+  .version(`${pkg.version} (harness protocol ${CURRENT_PROTOCOL})`)
   .description(
     "Seed an agentic harness into .agentic/ and link it into each AI coding client's config"
   );

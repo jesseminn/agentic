@@ -3,7 +3,7 @@ import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
 import { readMcpJson, type McpConfig } from "./translate.js";
-import { CURRENT_PROTOCOL, DEFAULT_PROTOCOL, compareProtocol } from "./protocol.js";
+import { CURRENT_PROTOCOL, DEFAULT_PROTOCOL, isCompatibleProtocol, majorOf } from "./protocol.js";
 
 /**
  * The standard shape of an agentic harness. See docs/design-v1.md §3.
@@ -165,17 +165,15 @@ export function validateHarness(dir: string): HarnessMeta {
     }
   }
 
-  // A harness on another protocol has another shape; checking it further only adds noise.
-  if (meta) {
-    const c = compareProtocol(meta.protocol, CURRENT_PROTOCOL);
-    if (c !== 0) {
-      throw new Error(
-        `Invalid harness at ${dir}:\n  - protocol ${meta.protocol} — this agentic reads protocol ${CURRENT_PROTOCOL}; ` +
-          (c < 0
-            ? `migrate the harness (docs/design-v1.md §9) and set "protocol": "${CURRENT_PROTOCOL}" in ${HARNESS_META}`
-            : "upgrade agentic")
-      );
-    }
+  // A harness on an incompatible protocol has another shape; checking it further only adds noise.
+  if (meta && !isCompatibleProtocol(meta.protocol, CURRENT_PROTOCOL)) {
+    const older = majorOf(meta.protocol) < majorOf(CURRENT_PROTOCOL);
+    throw new Error(
+      `Invalid harness at ${dir}:\n  - protocol ${meta.protocol} is not compatible with protocol ${CURRENT_PROTOCOL}, which this agentic reads; ` +
+        (older
+          ? `migrate the harness (docs/design-v1.md §9) and set "protocol": "${CURRENT_PROTOCOL}" in ${HARNESS_META}`
+          : "upgrade agentic")
+    );
   }
 
   if (!fs.existsSync(path.join(dir, COMMON_RULES))) problems.push(`missing ${COMMON_RULES}`);

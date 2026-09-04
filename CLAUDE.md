@@ -29,13 +29,14 @@ rules/PROJECT.md                                                                
 
 ## Protocol (`lib/protocol.ts`, `lib/migrate.ts`)
 
-`CURRENT_PROTOCOL` is the one shape this build reads and writes; a `harness.json` or lock without `protocol` is `1.0`. Three rules, one each:
+`CURRENT_PROTOCOL` is the shape this build reads and writes. It is semver: MAJOR changes the shape, MINOR is additive, PATCH never changes the contract. A `harness.json` or lock without `protocol` is `1.0.0`. Four rules, one each:
 
-- A harness must be on the current protocol — `validateHarness` throws otherwise, naming both versions, before any shape check.
-- A project behind it is migrated, not refused: `migrate` applies each `STEPS` entry from the lock's protocol up to current, stamps the lock, re-links recorded platforms. `install` and `update` run it first (`autoMigrate`); `link`/`unlink`/`status`/`uninstall`/`eject`/`inject`/`mcp` stop with `requireCurrentProtocol` and say to run it.
+- A harness must be compatible — `isCompatibleProtocol` requires the same MAJOR and no higher MINOR. `validateHarness` throws otherwise, before any shape check, saying whether to migrate the harness or upgrade agentic.
+- A project behind it is migrated, not refused: `migrate` runs each `STEPS` entry from the lock's MAJOR up to this build's, stamps the lock, re-links recorded platforms. `install` and `update` run it first (`autoMigrate`); every other command stops with `requireCompatibleProtocol`, which passes on a MINOR difference because the shape is the same.
+- A step is keyed on MAJOR, because only a MAJOR moves files. A MINOR bump restamps the lock and reports no lines.
 - A step touches only project-owned content and derived files. A harness-owned path (in the lock) is reported and left for `update`.
 
-A lock-less `.agentic/` that still has a 1.0 path (`RULES.md`, `PROJECT.md`, `project/`) counts as 1.0, so v0.2 and lock-less projects migrate on `install`. Tool history lives in `STEPS`, never in `lib/platforms.ts`: a platform mapping describes the platform.
+A lock-less `.agentic/` that still has a protocol-1 path (`RULES.md`, `PROJECT.md`, `project/`) counts as `1.0.0`, so v0.2 and lock-less projects migrate on `install`. Tool history lives in `STEPS`, never in `lib/platforms.ts`: a platform mapping describes the platform. `--version` prints the tool version and the protocol; the README carries the history table.
 
 ## Update algorithm (`commands/update.ts`)
 
@@ -67,7 +68,7 @@ Per platform (`lib/platforms.ts` mapping):
 | gitignore | `settings.local.json`, `worktrees/` | none | none |
 
 - Root file is always generated with the header. A v0.2 symlink into `.agentic/` is replaced; a real non-generated file is a conflict.
-- `.claude/rules/` is not written. The 1.0 → 1.1 step removes v1.0 per-file links found there; a real file there is the project's own and is left alone.
+- `.claude/rules/` is not written. The protocol 1 to 2 step removes the per-file links protocol 1 put there; a real file there is the project's own and is left alone.
 - `status` warns, exit 0, when `rules/COMMON.md` + `rules/PROJECT.md` exceed `RULES_LINE_BUDGET` (200 lines).
 - `reconcileLinks` / `reconcileLinkDirs` rules: add missing; remove dangling or undesired links into `.agentic/`; never touch anything else; a real entry in the way is a conflict.
 - **Shared paths**: Antigravity and Codex both own `AGENTS.md` and `.agents/skills/`. `unlinkPlatform` skips any path in `platformPaths()` of another platform still in `lock.platforms`.
@@ -77,7 +78,7 @@ Per platform (`lib/platforms.ts` mapping):
 ## Lock (`lib/lock.ts`)
 
 ```json
-{ "protocol": "1.1",
+{ "protocol": "2.0.0",
   "harness": { "name", "version", "source", "ref", "commit", "installedAt" },
   "files": { "<rel>": "sha256:…" },
   "mcpServers": { "<key>": "sha256:…" },

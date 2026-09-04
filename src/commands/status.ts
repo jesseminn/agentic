@@ -5,7 +5,8 @@ import { readLock, hashFile, hashJson } from "../lib/lock.js";
 import { readMcpJson } from "../lib/translate.js";
 import { linkPlatform, rulesLineCount, RULES_LINE_BUDGET } from "../lib/linker.js";
 import { COMMON_RULES, PROJECT_RULES } from "../lib/harness.js";
-import { requireCurrentProtocol } from "../lib/migrate.js";
+import { requireCompatibleProtocol } from "../lib/migrate.js";
+import { CURRENT_PROTOCOL } from "../lib/protocol.js";
 
 /**
  * Report harness, linked platforms, and drift. Exits non-zero on any drift
@@ -13,7 +14,7 @@ import { requireCurrentProtocol } from "../lib/migrate.js";
  */
 export function statusCommand(cwd: string): void {
   requireAgenticDir(cwd);
-  requireCurrentProtocol(cwd);
+  requireCompatibleProtocol(cwd);
   const agenticDir = getAgenticDir(cwd);
   const lock = readLock(cwd);
   let dirty = false;
@@ -29,7 +30,13 @@ export function statusCommand(cwd: string): void {
     console.log(`  source: ${h.source}${h.ref ? `#${h.ref}` : ""}`);
     console.log(`  installed: ${h.installedAt}`);
   }
-  if (lock) console.log(`Protocol: ${lock.protocol}`);
+  if (lock) {
+    console.log(
+      lock.protocol === CURRENT_PROTOCOL
+        ? `Protocol: ${lock.protocol}`
+        : `Protocol: ${lock.protocol} (this agentic reads ${CURRENT_PROTOCOL}; \`update\` restamps it)`
+    );
+  }
 
   // --- lock drift: harness files hand-edited or deleted ---
   const mcp = readMcpJson(path.join(agenticDir, ".mcp.json"));
