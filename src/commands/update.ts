@@ -7,6 +7,7 @@ import { readMcpJson, writeMcpJson } from "../lib/translate.js";
 import { linkPlatform, removeIfEmpty } from "../lib/linker.js";
 import { printLinkReport } from "./link.js";
 import { tryResolve } from "./install.js";
+import { autoMigrate } from "./migrate.js";
 
 interface Plan {
   overwrite: string[];
@@ -34,6 +35,7 @@ export function updateCommand(
   spec: string | undefined,
   opts: { force: boolean }
 ): void {
+  autoMigrate(cwd);
   const { lock, harness } = requireHarness(cwd);
   const resolvedSpec = spec ?? (harness.ref ? `${harness.source}#${harness.ref}` : harness.source);
   const resolved = tryResolve(resolvedSpec, cwd);

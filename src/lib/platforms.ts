@@ -17,12 +17,6 @@ export interface PlatformMapping {
   rulesRootMode: "import" | "concat";
   /** Prefix for an import line. */
   importPrefix: string;
-  /**
-   * Where v1.0 linked rules/ and project/ files one by one. Rules now load
-   * through the root file only; `link` and `unlink` prune any link into
-   * .agentic/ still found here and leave real files alone.
-   */
-  legacyRulesDir?: string;
   /** Per-directory skill links go here. */
   skillsDir: string;
   /**
@@ -51,7 +45,6 @@ export const PLATFORMS: Record<PlatformId, PlatformMapping> = {
     rulesRoot: "CLAUDE.md",
     rulesRootMode: "import",
     importPrefix: "@",
-    legacyRulesDir: ".claude/rules",
     skillsDir: ".claude/skills",
     agentsDir: ".claude/agents",
     agentsMode: "link",

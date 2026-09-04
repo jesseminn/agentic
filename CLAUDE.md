@@ -23,7 +23,19 @@ harness.json  rules/COMMON.md  references/  skills/*/SKILL.md  agents/  mcps.jso
 rules/PROJECT.md                                                                     ← seed-once
 ```
 
+`harness.json` carries `protocol` — the shape version — beside the harness's own `version`. See Protocol below.
+
 `rules/` holds exactly those two files; ownership is per file, not per directory. A rule loads into every session on every platform, so anything procedural is a skill. `validateHarness` rejects a missing `harness.json`/`rules/COMMON.md`, the v1.0 paths (`RULES.md`, `PROJECT.md`, `project/`), any other file in `rules/`, a skill dir without `SKILL.md`, and any literal MCP env value (must be `${NAME}`).
+
+## Protocol (`lib/protocol.ts`, `lib/migrate.ts`)
+
+`CURRENT_PROTOCOL` is the one shape this build reads and writes; a `harness.json` or lock without `protocol` is `1.0`. Three rules, one each:
+
+- A harness must be on the current protocol — `validateHarness` throws otherwise, naming both versions, before any shape check.
+- A project behind it is migrated, not refused: `migrate` applies each `STEPS` entry from the lock's protocol up to current, stamps the lock, re-links recorded platforms. `install` and `update` run it first (`autoMigrate`); `link`/`unlink`/`status`/`uninstall`/`eject`/`inject`/`mcp` stop with `requireCurrentProtocol` and say to run it.
+- A step touches only project-owned content and derived files. A harness-owned path (in the lock) is reported and left for `update`.
+
+A lock-less `.agentic/` that still has a 1.0 path (`RULES.md`, `PROJECT.md`, `project/`) counts as 1.0, so v0.2 and lock-less projects migrate on `install`. Tool history lives in `STEPS`, never in `lib/platforms.ts`: a platform mapping describes the platform.
 
 ## Update algorithm (`commands/update.ts`)
 
@@ -55,7 +67,7 @@ Per platform (`lib/platforms.ts` mapping):
 | gitignore | `settings.local.json`, `worktrees/` | none | none |
 
 - Root file is always generated with the header. A v0.2 symlink into `.agentic/` is replaced; a real non-generated file is a conflict.
-- `.claude/rules/` is not written any more. A link into `.agentic/` found there (v1.0) is pruned by `link` and `unlink`; a real file there is the project's own and is left alone.
+- `.claude/rules/` is not written. The 1.0 → 1.1 step removes v1.0 per-file links found there; a real file there is the project's own and is left alone.
 - `status` warns, exit 0, when `rules/COMMON.md` + `rules/PROJECT.md` exceed `RULES_LINE_BUDGET` (200 lines).
 - `reconcileLinks` / `reconcileLinkDirs` rules: add missing; remove dangling or undesired links into `.agentic/`; never touch anything else; a real entry in the way is a conflict.
 - **Shared paths**: Antigravity and Codex both own `AGENTS.md` and `.agents/skills/`. `unlinkPlatform` skips any path in `platformPaths()` of another platform still in `lock.platforms`.
@@ -65,7 +77,8 @@ Per platform (`lib/platforms.ts` mapping):
 ## Lock (`lib/lock.ts`)
 
 ```json
-{ "harness": { "name", "version", "source", "ref", "commit", "installedAt" },
+{ "protocol": "1.1",
+  "harness": { "name", "version", "source", "ref", "commit", "installedAt" },
   "files": { "<rel>": "sha256:…" },
   "mcpServers": { "<key>": "sha256:…" },
   "platforms": ["claude"] }
@@ -83,6 +96,7 @@ Per platform (`lib/platforms.ts` mapping):
 | `uninstall` | `commands/uninstall.ts` — keeps locally modified harness files, reports them |
 | `link` / `unlink <platform>` | `commands/link.ts` |
 | `status` | `commands/status.ts` — exit 1 on any drift |
+| `migrate` | `commands/migrate.ts` — apply pending protocol steps; `autoMigrate` for install/update |
 | `mcp add/remove/list` | `commands/mcp.ts` — rejects literal secrets, warns on harness-owned keys |
 | `inject <platform>` | `commands/inject.ts` — only without a harness installed; skips symlinks and generated files |
 | `eject` | `commands/eject.ts` — inlines root imports, flattens links, strips headers, removes `.agentic/` |

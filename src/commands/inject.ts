@@ -14,6 +14,7 @@ import {
 import { readLock } from "../lib/lock.js";
 import { isSymlink } from "../lib/symlink.js";
 import { isGenerated } from "../lib/generated.js";
+import { requireCurrentProtocol } from "../lib/migrate.js";
 
 /**
  * Import a platform's existing standalone config into .agentic/ so it can
@@ -23,6 +24,7 @@ import { isGenerated } from "../lib/generated.js";
  */
 export async function injectCommand(cwd: string, platform: PlatformId): Promise<void> {
   requireAgenticDir(cwd);
+  requireCurrentProtocol(cwd);
   const agenticDir = getAgenticDir(cwd);
 
   const lock = readLock(cwd);

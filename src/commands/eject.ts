@@ -4,6 +4,7 @@ import { requireAgenticDir, getAgenticDir, AGENTIC_DIR, PLATFORMS } from "../lib
 import { flattenSymlink, isLinkInto } from "../lib/symlink.js";
 import { removeAllAgenticEntries } from "../lib/gitignore.js";
 import { readLock } from "../lib/lock.js";
+import { requireCurrentProtocol } from "../lib/migrate.js";
 import { isGenerated } from "../lib/generated.js";
 import { renderRoot } from "../lib/linker.js";
 
@@ -14,6 +15,7 @@ import { renderRoot } from "../lib/linker.js";
  */
 export function ejectCommand(cwd: string): void {
   requireAgenticDir(cwd);
+  requireCurrentProtocol(cwd);
   const agenticDir = getAgenticDir(cwd);
   const platforms = readLock(cwd)?.platforms ?? [];
 
@@ -31,8 +33,7 @@ export function ejectCommand(cwd: string): void {
       fs.writeFileSync(root, body);
     }
 
-    for (const rel of [m.legacyRulesDir, m.skillsDir, m.agentsDir]) {
-      if (!rel) continue;
+    for (const rel of [m.skillsDir, m.agentsDir]) {
       const dir = path.join(cwd, rel);
       if (isLinkInto(dir, agenticDir)) {
         flattenSymlink(dir);

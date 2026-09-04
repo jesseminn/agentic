@@ -77,7 +77,7 @@ function makeHarness(dir, v = 1) {
       if (name !== ".git") fs.rmSync(path.join(dir, name), { recursive: true, force: true });
     }
   }
-  write(dir, "harness.json", JSON.stringify({ name: "fixture", version: `${v}.0.0` }));
+  write(dir, "harness.json", JSON.stringify({ name: "fixture", version: `${v}.0.0`, protocol: "1.1" }));
   write(dir, "rules/COMMON.md", `# Team rules v${v}\n\nRead .agentic/references/workflow.md.\n`);
   write(dir, "references/workflow.md", `# Workflow v${v}\n`);
   write(dir, "rules/PROJECT.md", "# Project (seed)\n");
@@ -122,6 +122,7 @@ test("install + link claude derives a tracked, per-entry layout", () => {
   assert.ok(!exists(project, ".agentic/project"), "no project/ in the shape");
 
   const l = lock(project);
+  assert.equal(l.protocol, "1.1");
   assert.equal(l.harness.name, "fixture");
   assert.deepEqual(Object.keys(l.files).sort(), [
     "agents/reviewer.md",
@@ -152,7 +153,9 @@ test("install + link claude derives a tracked, per-entry layout", () => {
   assert.doesNotMatch(ignore, /\.claude\/skills/);
   assert.deepEqual(lock(project).platforms, ["claude"]);
 
-  assert.match(ok(project, "status"), /rules\/\s+2 \(1 harness, 1 project\)/);
+  const st = ok(project, "status");
+  assert.match(st, /Protocol: 1\.1/);
+  assert.match(st, /rules\/\s+2 \(1 harness, 1 project\)/);
   ok(project, "link", "claude"); // idempotent
 });
 
@@ -352,17 +355,16 @@ test("v0.2 whole-directory symlinks migrate to per-entry links", () => {
     "node_modules/\n\n# Claude Code (derived from .agentic/)\n/CLAUDE.md\n/.mcp.json\n.claude/skills\n.claude/agents\n.claude/settings.local.json\n"
   );
 
-  ok(project, "install", harness); // adopts skills/agents/references; adds rules/COMMON.md beside the old RULES.md
-  const first = cli(project, "link", "claude");
-  assert.equal(first.status, 1, "the v1.0 paths are conflicts, with a hint; everything else still links");
-  assert.match(first.out, /\.agentic\/RULES\.md is the v1\.0 shape/);
-  assert.match(first.out, /\.agentic\/PROJECT\.md is the v1\.0 shape/);
-  assert.match(first.out, /CLAUDE\.md \(whole-file symlink from v0\.2\)/);
-  assert.match(first.out, /\.claude\/skills \(whole-directory symlink from v0\.2\)/);
-  fs.unlinkSync(path.join(project, ".agentic/RULES.md"));
-  fs.renameSync(path.join(project, ".agentic/PROJECT.md"), path.join(project, ".agentic/rules/PROJECT.md"));
+  // no lock + the old paths ⇒ protocol 1.0: install migrates first, then adopts everything as identical
+  const inst = ok(project, "install", harness);
+  assert.match(inst, /Migrated \.agentic\/ from protocol 1\.0 to 1\.1/);
+  assert.match(inst, /RULES\.md → rules\/COMMON\.md/);
+  assert.match(inst, /PROJECT\.md → rules\/PROJECT\.md/);
+  assert.match(inst, /4 harness files \(7 already present, adopted\)/, "4 files + 3 MCP keys, all identical");
+  assert.equal(lock(project).protocol, "1.1");
   const out = ok(project, "link", "claude");
-  assert.match(out, /up to date|unchanged/);
+  assert.match(out, /CLAUDE\.md \(whole-file symlink from v0\.2\)/);
+  assert.match(out, /\.claude\/skills \(whole-directory symlink from v0\.2\)/);
   assert.ok(!isLink(project, "CLAUDE.md"));
   assert.ok(!isLink(project, ".claude/skills"));
   assert.ok(isLink(project, ".claude/skills/commit"));
@@ -559,7 +561,8 @@ test("init creates a harness-less .agentic that links", () => {
   ok(project, "init");
   fail(project, "init");
   assert.ok(exists(project, ".agentic/rules/COMMON.md") && exists(project, ".agentic/rules/PROJECT.md"));
-  assert.ok(!exists(project, ".agentic/RULES.md") && !exists(project, ".agentic/project"), "no v1.0 paths");
+  assert.ok(!exists(project, ".agentic/RULES.md") && !exists(project, ".agentic/project"), "no protocol-1.0 paths");
+  assert.equal(lock(project).protocol, "1.1");
   write(project, ".agentic/skills/mine/SKILL.md", "---\nname: mine\n---\n");
   ok(project, "link", "claude");
   assert.ok(isLink(project, ".claude/skills/mine"));
@@ -590,8 +593,8 @@ test("rules/ holds only COMMON.md and PROJECT.md; the v1.0 shape is a conflict w
   write(project, ".agentic/project/domain.md", "# old\n");
   r = cli(project, "link", "claude");
   assert.equal(r.status, 1);
-  assert.match(r.out, /\.agentic\/RULES\.md is the v1\.0 shape/);
-  assert.match(r.out, /\.agentic\/project is the v1\.0 shape/);
+  assert.match(r.out, /\.agentic\/RULES\.md is the protocol-1\.0 shape/);
+  assert.match(r.out, /\.agentic\/project is the protocol-1\.0 shape/);
   assert.match(r.out, /rules\/COMMON\.md/, "the hint names the new path");
   assert.equal(cli(project, "status").status, 1, "status gates on it too");
   fs.unlinkSync(path.join(project, ".agentic/RULES.md"));
@@ -599,41 +602,94 @@ test("rules/ holds only COMMON.md and PROJECT.md; the v1.0 shape is a conflict w
   ok(project, "link", "claude");
   ok(project, "status");
 
-  // a harness in the old shape, or with extra rules files, is rejected before anything is written
+  // a harness on another protocol, or with extra rules files, is rejected before anything is written
   const old = makeHarness(tmp("old"));
-  write(old, "RULES.md", "# old\n");
+  write(old, "harness.json", JSON.stringify({ name: "fixture", version: "1.0.0" })); // no protocol ⇒ 1.0
   const p2 = freshProject("proj2");
-  assert.match(fail(p2, "install", old), /RULES\.md is the v1\.0 shape/);
+  assert.match(fail(p2, "install", old), /protocol 1\.0 — this agentic reads protocol 1\.1/);
+  write(old, "harness.json", JSON.stringify({ name: "fixture", version: "1.0.0", protocol: "9.0" }));
+  assert.match(fail(p2, "install", old), /upgrade agentic/);
   const extra = makeHarness(tmp("extra"));
   write(extra, "rules/style.md", "# style\n");
   assert.match(fail(p2, "install", extra), /rules\/style\.md: rules\/ holds only/);
   assert.ok(!exists(p2, ".agentic"), "nothing written");
 });
 
-test("v1.0 per-file rule links under .claude/rules are pruned; real rules there are kept", () => {
-  const harness = makeHarness(tmp("harness"));
+test("migrate: a protocol-1.0 project is refused by link/status/unlink and moved by migrate", () => {
   const project = freshProject("proj");
-  ok(project, "install", harness);
+  ok(project, "init");
   ok(project, "link", "claude");
-
-  fs.mkdirSync(path.join(project, ".claude/rules"));
-  fs.symlinkSync("../../.agentic/rules/COMMON.md", path.join(project, ".claude/rules/testing.md"));
+  // rewind to the shape v1.0.0 left: root rules files, topic files, per-file links, no protocol in the lock
+  fs.renameSync(path.join(project, ".agentic/rules/COMMON.md"), path.join(project, ".agentic/RULES.md"));
+  fs.unlinkSync(path.join(project, ".agentic/rules/PROJECT.md"));
+  write(project, ".agentic/PROJECT.md", "# My project\n");
+  write(project, ".agentic/rules/style.md", "# Style\n\nTabs.\n");
+  write(project, ".agentic/project/domain.md", "# Domain\n\nOrders.\n");
+  fs.mkdirSync(path.join(project, ".claude/rules"), { recursive: true }); // link created no .claude/: init has no skills
+  fs.symlinkSync("../../.agentic/rules/style.md", path.join(project, ".claude/rules/style.md"));
   write(project, ".claude/rules/mine.md", "---\npaths:\n  - \"src/**\"\n---\n# mine\n");
+  const l = lock(project);
+  delete l.protocol;
+  write(project, ".agentic/agentic.lock", JSON.stringify(l, null, 2) + "\n");
 
-  const s = cli(project, "status");
-  assert.equal(s.status, 1, "a stale link is drift");
-  assert.match(s.out, /\.claude\/rules\/testing\.md/);
-  const out = ok(project, "link", "claude");
-  assert.match(out, /\.claude\/rules\/testing\.md \(per-file rules link from v1\.0\)/);
-  assert.ok(!exists(project, ".claude/rules/testing.md"));
+  for (const args of [["link", "claude"], ["status"], ["unlink", "claude"]]) {
+    const r = cli(project, ...args);
+    assert.equal(r.status, 1, args.join(" "));
+    assert.match(r.out, /on protocol 1\.0; this agentic reads 1\.1/);
+    assert.match(r.out, /agentic migrate/);
+  }
+  assert.ok(exists(project, ".agentic/RULES.md"), "refused, not touched");
+
+  const out = ok(project, "migrate");
+  assert.match(out, /Migrated \.agentic\/ from protocol 1\.0 to 1\.1/);
+  assert.match(out, /RULES\.md → rules\/COMMON\.md/);
+  assert.match(out, /PROJECT\.md → rules\/PROJECT\.md/);
+  assert.match(out, /rules\/style\.md folded into rules\/PROJECT\.md as "## style"/);
+  assert.match(out, /project\/domain\.md folded into rules\/PROJECT\.md as "## domain"/);
+  assert.match(out, /\.claude\/rules\/style\.md removed/);
+  assert.ok(!exists(project, ".agentic/RULES.md") && !exists(project, ".agentic/PROJECT.md"));
+  assert.ok(!exists(project, ".agentic/rules/style.md") && !exists(project, ".agentic/project"));
+  const pr = read(project, ".agentic/rules/PROJECT.md");
+  assert.match(pr, /^# My project\n/);
+  assert.match(pr, /## style\n<!-- migrated from \.agentic\/rules\/style\.md \(protocol 1\.0 → 1\.1\) -->\n# Style\n\nTabs\./);
+  assert.match(pr, /## domain\n<!-- migrated from \.agentic\/project\/domain\.md .*-->\n# Domain\n\nOrders\./);
+  assert.ok(!exists(project, ".claude/rules/style.md"));
   assert.match(read(project, ".claude/rules/mine.md"), /# mine/, "a real rules file is the project's");
+  assert.equal(lock(project).protocol, "1.1");
+  assert.equal(
+    read(project, "CLAUDE.md").split("\n").slice(1).join("\n"),
+    "@.agentic/rules/COMMON.md\n@.agentic/rules/PROJECT.md\n",
+    "recorded platforms re-linked"
+  );
   ok(project, "status");
+  assert.match(ok(project, "migrate"), /Already on protocol 1\.1/);
+});
 
-  fs.symlinkSync("../../.agentic/rules/COMMON.md", path.join(project, ".claude/rules/again.md"));
-  const un = ok(project, "unlink", "claude");
-  assert.match(un, /\.claude\/rules\/again\.md/);
-  assert.ok(!exists(project, ".claude/rules/again.md"));
-  assert.ok(exists(project, ".claude/rules/mine.md"));
+test("update migrates a protocol-1.0 lock first, then reconciles harness-owned files", () => {
+  const hdir = tmp("harness");
+  makeHarness(hdir, 1);
+  const project = freshProject("proj");
+  ok(project, "install", hdir);
+  ok(project, "link", "claude");
+  // rewind: harness-owned RULES.md at the root, lock keyed on it, no protocol
+  fs.renameSync(path.join(project, ".agentic/rules/COMMON.md"), path.join(project, ".agentic/RULES.md"));
+  const l = lock(project);
+  l.files["RULES.md"] = l.files["rules/COMMON.md"];
+  delete l.files["rules/COMMON.md"];
+  delete l.protocol;
+  write(project, ".agentic/agentic.lock", JSON.stringify(l, null, 2) + "\n");
+
+  const out = ok(project, "update");
+  assert.match(out, /Migrated \.agentic\/ from protocol 1\.0 to 1\.1/);
+  assert.match(out, /RULES\.md is harness-owned/);
+  assert.match(out, /added: 1\n\s+rules\/COMMON\.md/);
+  assert.match(out, /removed: 1\n\s+RULES\.md/);
+  assert.ok(!exists(project, ".agentic/RULES.md"));
+  assert.equal(read(project, ".agentic/rules/COMMON.md"), "# Team rules v1\n\nRead .agentic/references/workflow.md.\n");
+  const l2 = lock(project);
+  assert.equal(l2.protocol, "1.1");
+  assert.ok("rules/COMMON.md" in l2.files && !("RULES.md" in l2.files));
+  ok(project, "status");
 });
 
 test("status warns, without failing, when the two rules files pass 200 lines", () => {

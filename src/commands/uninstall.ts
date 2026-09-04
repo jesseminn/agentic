@@ -6,6 +6,7 @@ import { readMcpJson, writeMcpJson } from "../lib/translate.js";
 import { linkPlatform } from "../lib/linker.js";
 import { printLinkReport } from "./link.js";
 import { pruneEmptyDirs } from "./update.js";
+import { requireCurrentProtocol } from "../lib/migrate.js";
 
 /**
  * Remove the harness from .agentic/: every lock-listed file and MCP key.
@@ -14,6 +15,7 @@ import { pruneEmptyDirs } from "./update.js";
  * with `harness: null`, so linked platforms remain recorded.
  */
 export function uninstallCommand(cwd: string): void {
+  requireCurrentProtocol(cwd);
   const { lock, harness } = requireHarness(cwd);
   const agenticDir = getAgenticDir(cwd);
   const removed: string[] = [];

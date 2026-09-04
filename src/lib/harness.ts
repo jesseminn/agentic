@@ -3,11 +3,12 @@ import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
 import { readMcpJson, type McpConfig } from "./translate.js";
+import { CURRENT_PROTOCOL, DEFAULT_PROTOCOL, compareProtocol } from "./protocol.js";
 
 /**
  * The standard shape of an agentic harness. See docs/design-v1.md §3.
  *
- *   harness.json            name, version
+ *   harness.json            name, version, protocol (lib/protocol.ts)
  *   rules/COMMON.md         harness-owned — who the agent is: role, style, conventions
  *   rules/PROJECT.md        seed-once — the project's own context
  *   references/<name>.md    harness-owned
@@ -29,16 +30,24 @@ export const OWNED_DIRS = ["references", "skills", "agents"] as const;
 export const SEED_FILES = [PROJECT_RULES] as const;
 /** Top-level dirs every .agentic/ has. `update` and `uninstall` never prune them. */
 export const STANDARD_DIRS = [RULES_DIR, ...OWNED_DIRS] as const;
-/** The v1.0 shape. Rejected in a harness; reported by `link` in a project. */
+/** The protocol-1.0 shape. A harness on it fails the protocol check; a project on it is moved by `migrate`. */
 export const LEGACY_PATHS = ["RULES.md", "PROJECT.md", "project"] as const;
-export const LEGACY_HINT =
-  "move RULES.md to rules/COMMON.md and PROJECT.md to rules/PROJECT.md; fold rules/*.md and project/*.md into them or into skills (docs/design-v1.md §9)";
+export const LEGACY_HINT = "move its content into rules/COMMON.md or rules/PROJECT.md and remove it";
 export const RULES_ONLY_HINT = "rules/ holds only COMMON.md and PROJECT.md — fold it into one of them, or make it a skill";
 
 export interface HarnessMeta {
   name: string;
   version: string;
+  /** Shape version. Absent in harness.json ⇒ 1.0. */
+  protocol: string;
 }
+
+export const PROJECT_STUB = `# Project
+
+Project-specific context: goal, structure, stack, conventions that differ
+from the harness. Loaded into every session, so keep it short; anything
+procedural is a skill.
+`;
 
 export interface ResolvedHarness {
   /** Local directory holding the harness content. */
@@ -146,16 +155,30 @@ export function validateHarness(dir: string): HarnessMeta {
       const raw = JSON.parse(fs.readFileSync(metaPath, "utf-8"));
       if (typeof raw.name !== "string" || !raw.name) problems.push(`${HARNESS_META}: "name" required`);
       if (typeof raw.version !== "string" || !raw.version) problems.push(`${HARNESS_META}: "version" required`);
-      meta = { name: raw.name, version: raw.version };
+      meta = {
+        name: raw.name,
+        version: raw.version,
+        protocol: typeof raw.protocol === "string" && raw.protocol ? raw.protocol : DEFAULT_PROTOCOL,
+      };
     } catch (e) {
       problems.push(`${HARNESS_META}: ${(e as Error).message}`);
     }
   }
 
-  if (!fs.existsSync(path.join(dir, COMMON_RULES))) problems.push(`missing ${COMMON_RULES}`);
-  for (const legacy of LEGACY_PATHS) {
-    if (fs.existsSync(path.join(dir, legacy))) problems.push(`${legacy} is the v1.0 shape — ${LEGACY_HINT}`);
+  // A harness on another protocol has another shape; checking it further only adds noise.
+  if (meta) {
+    const c = compareProtocol(meta.protocol, CURRENT_PROTOCOL);
+    if (c !== 0) {
+      throw new Error(
+        `Invalid harness at ${dir}:\n  - protocol ${meta.protocol} — this agentic reads protocol ${CURRENT_PROTOCOL}; ` +
+          (c < 0
+            ? `migrate the harness (docs/design-v1.md §9) and set "protocol": "${CURRENT_PROTOCOL}" in ${HARNESS_META}`
+            : "upgrade agentic")
+      );
+    }
   }
+
+  if (!fs.existsSync(path.join(dir, COMMON_RULES))) problems.push(`missing ${COMMON_RULES}`);
   for (const extra of extraRulesFiles(dir)) problems.push(`rules/${extra}: ${RULES_ONLY_HINT}`);
 
   const skillsDir = path.join(dir, "skills");

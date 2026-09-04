@@ -13,6 +13,7 @@ import { statusCommand } from "./commands/status.js";
 import { mcpAddCommand, mcpRemoveCommand, mcpListCommand } from "./commands/mcp.js";
 import { injectCommand } from "./commands/inject.js";
 import { ejectCommand } from "./commands/eject.js";
+import { migrateCommand } from "./commands/migrate.js";
 import { isPlatformId, PLATFORM_IDS, type PlatformId } from "./lib/platforms.js";
 
 const cwd = process.cwd();
@@ -64,6 +65,11 @@ program
   .command("unlink <platform>")
   .description("Remove what `link` created for a platform")
   .action((p: string) => unlinkCommand(cwd, platformArg(p)));
+
+program
+  .command("migrate")
+  .description("Bring .agentic/ up to this version's protocol (update does this first)")
+  .action(() => migrateCommand(cwd));
 
 program
   .command("status")

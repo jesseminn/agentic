@@ -4,6 +4,7 @@ import { readMcpJson, writeMcpJson } from "../lib/translate.js";
 import { readLock } from "../lib/lock.js";
 import { findLiteralSecrets } from "../lib/harness.js";
 import { linkMcp } from "../lib/linker.js";
+import { requireCurrentProtocol } from "../lib/migrate.js";
 
 export function mcpAddCommand(
   cwd: string,
@@ -13,6 +14,7 @@ export function mcpAddCommand(
   env: Record<string, string>
 ): void {
   requireAgenticDir(cwd);
+  requireCurrentProtocol(cwd);
   const lock = readLock(cwd);
 
   const entry = {
@@ -46,6 +48,7 @@ export function mcpAddCommand(
 
 export function mcpRemoveCommand(cwd: string, name: string): void {
   requireAgenticDir(cwd);
+  requireCurrentProtocol(cwd);
   const lock = readLock(cwd);
 
   const mcpPath = path.join(getAgenticDir(cwd), ".mcp.json");
@@ -69,6 +72,7 @@ export function mcpRemoveCommand(cwd: string, name: string): void {
 
 export function mcpListCommand(cwd: string): void {
   requireAgenticDir(cwd);
+  requireCurrentProtocol(cwd);
   const lock = readLock(cwd);
   const config = readMcpJson(path.join(getAgenticDir(cwd), ".mcp.json"));
   const servers = Object.entries(config.mcpServers);

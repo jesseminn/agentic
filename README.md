@@ -13,7 +13,7 @@ Repo: `jesseminn/agentic`. Package and command: `agentic`.
 
 ```
 .agentic/
-├── agentic.lock              ownership + provenance
+├── agentic.lock              ownership + provenance + protocol
 ├── rules/
 │   ├── COMMON.md             harness — who the agent is; replaced by `update`
 │   └── PROJECT.md            project — its own context; seeded once, never updated
@@ -49,6 +49,7 @@ agentic link codex
 agentic update              # pull the harness from the lock's source
 agentic update ../local     # or from a local checkout, for testing
 agentic status              # drift report; exit 1 on drift (CI gate)
+agentic migrate             # bring .agentic/ to this version's protocol (update does it first)
 
 # project MCP servers (env values must be ${NAME} references)
 agentic mcp add gh npx mcp-github --env 'GITHUB_TOKEN=${GITHUB_TOKEN}'
@@ -101,7 +102,7 @@ Anything in `.agentic/` not in the lock is project-owned and invisible to `updat
 A harness is a repo with this shape:
 
 ```
-harness.json            { "name": "...", "version": "..." }
+harness.json            { "name": "...", "version": "...", "protocol": "1.1" }
 rules/COMMON.md         who the agent is — role, style, conventions shared across projects; short
 references/<doc>.md     workflow docs that skills cite — cite them root-relative: .agentic/references/<doc>.md
 skills/<name>/SKILL.md  Agent Skills format; a namespace prefix keeps harness skills clear of platform built-ins
@@ -109,6 +110,8 @@ agents/<name>.md        subagents, markdown + frontmatter (name, description, bo
 mcps.json               MCP servers; env values as ${NAME}, never literals
 rules/PROJECT.md        optional seed for the project's own context — copied once, then the project's
 ```
+
+`protocol` is the version of this shape, separate from your own `version`; a `harness.json` without it is on 1.0. The tool reads exactly one protocol and refuses a harness on another, so a shape change is a harness change you make once, deliberately. A *project* on an older protocol is brought forward by `agentic migrate` — a deterministic, reviewable diff of project-owned files and derived links; `install` and `update` run it first.
 
 Not part of a harness: hooks (every client has its own model), platform-specific mechanisms (plugins, output styles), and project-specific content beyond the seeds.
 

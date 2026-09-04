@@ -2,6 +2,7 @@ import * as crypto from "node:crypto";
 import * as fs from "node:fs";
 import * as path from "node:path";
 import { getAgenticDir, isPlatformId, type PlatformId } from "./platforms.js";
+import { CURRENT_PROTOCOL, DEFAULT_PROTOCOL } from "./protocol.js";
 
 export const LOCK_FILE = "agentic.lock";
 
@@ -18,6 +19,8 @@ export interface HarnessRef {
 }
 
 export interface Lock {
+  /** Shape version of .agentic/ (lib/protocol.ts). Absent in a v1.0.0 lock ⇒ 1.0. */
+  protocol: string;
   harness: HarnessRef | null;
   /** Harness-owned paths relative to .agentic/, with content hash. */
   files: Record<string, string>;
@@ -28,7 +31,7 @@ export interface Lock {
 }
 
 export function emptyLock(): Lock {
-  return { harness: null, files: {}, mcpServers: {}, platforms: [] };
+  return { protocol: CURRENT_PROTOCOL, harness: null, files: {}, mcpServers: {}, platforms: [] };
 }
 
 export function getLockPath(cwd: string): string {
@@ -45,6 +48,7 @@ export function readLock(cwd: string): Lock | null {
     else console.error(`Warning: agentic.lock lists unknown platform "${id}" (removed from this version) — ignored.`);
   }
   return {
+    protocol: typeof raw.protocol === "string" && raw.protocol ? raw.protocol : DEFAULT_PROTOCOL,
     harness: raw.harness ?? null,
     files: raw.files ?? {},
     mcpServers: raw.mcpServers ?? {},
@@ -59,6 +63,7 @@ export function ensureLock(cwd: string): Lock {
 
 export function writeLock(cwd: string, lock: Lock): void {
   const sorted: Lock = {
+    protocol: lock.protocol,
     harness: lock.harness,
     files: sortKeys(lock.files),
     mcpServers: sortKeys(lock.mcpServers),

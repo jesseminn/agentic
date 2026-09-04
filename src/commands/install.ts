@@ -7,12 +7,13 @@ import {
   listSeedFiles,
   readHarnessMcp,
   PROJECT_RULES,
+  PROJECT_STUB,
 } from "../lib/harness.js";
 import { readLock, writeLock, emptyLock, hashFile, hashJson } from "../lib/lock.js";
 import { readMcpJson, writeMcpJson } from "../lib/translate.js";
 import { linkPlatform } from "../lib/linker.js";
 import { printLinkReport } from "./link.js";
-import { PROJECT_STUB } from "./init.js";
+import { autoMigrate } from "./migrate.js";
 
 /**
  * Seed a harness into .agentic/. Nothing is overwritten: a local path that
@@ -20,6 +21,7 @@ import { PROJECT_STUB } from "./init.js";
  * Identical content is adopted silently (v0.2 migration).
  */
 export function installCommand(cwd: string, spec: string): void {
+  autoMigrate(cwd);
   const existing = readLock(cwd);
   if (existing?.harness) {
     console.error(

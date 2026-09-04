@@ -1,16 +1,9 @@
 import * as fs from "node:fs";
 import * as path from "node:path";
 import { AGENTIC_DIR, getAgenticDir } from "../lib/platforms.js";
-import { COMMON_RULES, PROJECT_RULES, STANDARD_DIRS } from "../lib/harness.js";
+import { COMMON_RULES, PROJECT_RULES, PROJECT_STUB, STANDARD_DIRS } from "../lib/harness.js";
 import { emptyLock, writeLock } from "../lib/lock.js";
 import { writeMcpJson } from "../lib/translate.js";
-
-export const PROJECT_STUB = `# Project
-
-Project-specific context: goal, structure, stack, conventions that differ
-from the harness. Loaded into every session, so keep it short; anything
-procedural is a skill.
-`;
 
 const COMMON_STUB = `# Common rules
 

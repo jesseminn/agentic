@@ -50,7 +50,7 @@ function collectSources(agenticDir: string): Sources {
   }
   for (const legacy of LEGACY_PATHS) {
     if (fs.existsSync(path.join(agenticDir, legacy))) {
-      s.conflicts.push(`${AGENTIC_DIR}/${legacy} is the v1.0 shape and is not loaded — ${LEGACY_HINT}`);
+      s.conflicts.push(`${AGENTIC_DIR}/${legacy} is the protocol-1.0 shape and is not loaded — ${LEGACY_HINT}`);
     }
   }
   for (const extra of extraRulesFiles(agenticDir)) {
@@ -154,12 +154,6 @@ export function linkPlatform(
     }
   }
 
-  // --- v1.0 per-file rule links → stale; rules load through the root file now ---
-  if (m.legacyRulesDir) {
-    for (const rel of pruneLegacyRuleLinks(path.join(cwd, m.legacyRulesDir), agenticDir, m.legacyRulesDir, apply)) {
-      report.removed.push(`${rel} (per-file rules link from v1.0)`);
-    }
-  }
 
   // --- skills/ → per-directory links ---
   reconcileLinks(path.join(cwd, m.skillsDir), s.skills, agenticDir, m.skillsDir, report, apply);
@@ -315,10 +309,6 @@ export function unlinkPlatform(cwd: string, platform: PlatformId): UnlinkReport 
     removeIfEmpty(abs);
   }
 
-  if (m.legacyRulesDir) {
-    report.removed.push(...pruneLegacyRuleLinks(path.join(cwd, m.legacyRulesDir), agenticDir, m.legacyRulesDir, true));
-  }
-
   if (m.agentsMode === "link-dir" && !isShared(m.agentsDir)) {
     const abs = path.join(cwd, m.agentsDir);
     if (fs.existsSync(abs)) {
@@ -387,26 +377,6 @@ export function unlinkPlatform(cwd: string, platform: PlatformId): UnlinkReport 
 }
 
 // --- reconciliation ---
-
-/**
- * v1.0 linked rules/ and project/ files one by one into a platform rules
- * directory. Rules now load through the root file, so a link into .agentic/
- * found there is stale: remove it, leave everything else — a real file there
- * is the project's own platform rule — and drop the dir once empty.
- * Returns the removed entries as `<label>/<name>`.
- */
-function pruneLegacyRuleLinks(dirAbs: string, agenticDir: string, label: string, apply: boolean): string[] {
-  const removed: string[] = [];
-  if (!fs.existsSync(dirAbs) || isSymlink(dirAbs) || !fs.statSync(dirAbs).isDirectory()) return removed;
-  for (const name of fs.readdirSync(dirAbs)) {
-    const p = path.join(dirAbs, name);
-    if (!isLinkInto(p, agenticDir)) continue;
-    if (apply) fs.unlinkSync(p);
-    removed.push(`${label}/${name}`);
-  }
-  if (apply) removeIfEmpty(dirAbs);
-  return removed;
-}
 
 /**
  * Make `dirAbs` hold exactly one symlink per desired entry, pointing into
