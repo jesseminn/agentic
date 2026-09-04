@@ -14,10 +14,9 @@ Repo: `jesseminn/agentic`. Package and command: `agentic`.
 ```
 .agentic/
 ├── agentic.lock              ownership + provenance
-├── RULES.md                  harness
-├── rules/<topic>.md          harness or project (lock decides per file)
-├── PROJECT.md                project (seeded once, never updated)
-├── project/<topic>.md        project (seeded once)
+├── rules/
+│   ├── COMMON.md             harness — who the agent is; replaced by `update`
+│   └── PROJECT.md            project — its own context; seeded once, never updated
 ├── references/<doc>.md       harness or project
 ├── skills/<name>/SKILL.md    harness or project
 ├── agents/<name>.md          harness or project
@@ -67,13 +66,14 @@ No harness yet? `agentic init` creates a bare `.agentic/` you can link on its ow
 
 | harness part | Claude Code | Antigravity CLI (`agy`) | Codex CLI |
 |---|---|---|---|
-| rules root | `CLAUDE.md` — generated, `@.agentic/RULES.md` + `@.agentic/PROJECT.md` | `AGENTS.md` — generated, content inlined | `AGENTS.md` — same file |
-| `rules/`, `project/` | per-file links in `.claude/rules/` | inlined in `AGENTS.md` | inlined in `AGENTS.md` |
+| `rules/` | `CLAUDE.md` — generated, `@.agentic/rules/COMMON.md` + `@.agentic/rules/PROJECT.md` | `AGENTS.md` — generated, both inlined, COMMON first | `AGENTS.md` — same file |
 | `skills/` | per-dir links in `.claude/skills/` | per-dir links in `.agents/skills/` | same directory |
 | `agents/` | per-file links in `.claude/agents/` | links at `.agents/agents/<name>/agent.md` | `.codex/agents/*.toml` (generated) |
 | `.mcp.json` | symlink `.mcp.json` | `mcpServers` written into `.agents/mcp_config.json` | `.codex/config.toml` (generated) |
 
 Antigravity and Codex both read `AGENTS.md` and `.agents/skills/`, so linking both produces one shared copy; unlinking one leaves what the other still needs.
+
+Rules are loaded into every session on every platform, and no client follows an `@` import or a link from `AGENTS.md` — only Claude Code expands `@` at all, at launch, without saving context. So a harness has exactly two rules files, kept short, and puts everything procedural in skills, which every client loads on demand. `status` warns when the two files together pass 200 lines.
 
 Everything derived is tracked. Only files a device or the platform itself writes are gitignored: `.claude/settings.local.json`, `.claude/worktrees/`.
 
@@ -102,14 +102,12 @@ A harness is a repo with this shape:
 
 ```
 harness.json            { "name": "...", "version": "..." }
-RULES.md                behavior rules (short map file)
-rules/<topic>.md        topic rules
+rules/COMMON.md         who the agent is — role, style, conventions shared across projects; short
 references/<doc>.md     workflow docs that skills cite — cite them root-relative: .agentic/references/<doc>.md
 skills/<name>/SKILL.md  Agent Skills format; a namespace prefix keeps harness skills clear of platform built-ins
 agents/<name>.md        subagents, markdown + frontmatter (name, description, body)
 mcps.json               MCP servers; env values as ${NAME}, never literals
-PROJECT.md              optional seed for the project's own context
-project/<topic>.md      optional seeds
+rules/PROJECT.md        optional seed for the project's own context — copied once, then the project's
 ```
 
 Not part of a harness: hooks (every client has its own model), platform-specific mechanisms (plugins, output styles), and project-specific content beyond the seeds.

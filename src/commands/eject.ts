@@ -31,7 +31,7 @@ export function ejectCommand(cwd: string): void {
       fs.writeFileSync(root, body);
     }
 
-    for (const rel of [m.rulesDir, m.skillsDir, m.agentsDir]) {
+    for (const rel of [m.legacyRulesDir, m.skillsDir, m.agentsDir]) {
       if (!rel) continue;
       const dir = path.join(cwd, rel);
       if (isLinkInto(dir, agenticDir)) {

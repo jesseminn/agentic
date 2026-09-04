@@ -2,6 +2,7 @@ import * as fs from "node:fs";
 import * as path from "node:path";
 import * as readline from "node:readline";
 import { requireAgenticDir, getAgenticDir, PLATFORMS, type PlatformId } from "../lib/platforms.js";
+import { COMMON_RULES, PROJECT_RULES } from "../lib/harness.js";
 import {
   mcpTomlToJson,
   extractMcpServers,
@@ -27,7 +28,7 @@ export async function injectCommand(cwd: string, platform: PlatformId): Promise<
   const lock = readLock(cwd);
   if (lock?.harness) {
     console.error(
-      `Error: harness ${lock.harness.name} is installed; inject would overwrite harness-owned files. Add project content under PROJECT.md, project/, or unprefixed skills instead.`
+      `Error: harness ${lock.harness.name} is installed; inject would overwrite harness-owned files. Add project content under ${PROJECT_RULES} or unprefixed skills instead.`
     );
     process.exit(1);
   }
@@ -41,7 +42,7 @@ export async function injectCommand(cwd: string, platform: PlatformId): Promise<
   }
 
   const m = PLATFORMS[platform];
-  copyReal(path.join(cwd, m.rulesRoot), path.join(agenticDir, "RULES.md"));
+  copyReal(path.join(cwd, m.rulesRoot), path.join(agenticDir, PROJECT_RULES));
 
   switch (m.mcp.type) {
     case "symlink":
@@ -70,7 +71,6 @@ export async function injectCommand(cwd: string, platform: PlatformId): Promise<
   }
 
   copyRealEntries(path.join(cwd, m.skillsDir), path.join(agenticDir, "skills"), m.skillsDir);
-  if (m.rulesDir) copyRealEntries(path.join(cwd, m.rulesDir), path.join(agenticDir, "rules"), m.rulesDir);
 
   if (m.agentsMode === "link") {
     copyRealEntries(path.join(cwd, m.agentsDir), path.join(agenticDir, "agents"), m.agentsDir);
@@ -98,9 +98,11 @@ export async function injectCommand(cwd: string, platform: PlatformId): Promise<
 }
 
 function hasExistingConfigs(agenticDir: string): boolean {
-  const rules = path.join(agenticDir, "RULES.md");
-  if (fs.existsSync(rules) && fs.readFileSync(rules, "utf-8").trim().length > 0) return true;
-  for (const d of ["skills", "agents", "rules"]) {
+  for (const f of [COMMON_RULES, PROJECT_RULES]) {
+    const p = path.join(agenticDir, f);
+    if (fs.existsSync(p) && fs.readFileSync(p, "utf-8").trim().length > 0) return true;
+  }
+  for (const d of ["skills", "agents"]) {
     const p = path.join(agenticDir, d);
     if (fs.existsSync(p) && fs.readdirSync(p).length > 0) return true;
   }

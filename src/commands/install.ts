@@ -6,6 +6,7 @@ import {
   listOwnedFiles,
   listSeedFiles,
   readHarnessMcp,
+  PROJECT_RULES,
 } from "../lib/harness.js";
 import { readLock, writeLock, emptyLock, hashFile, hashJson } from "../lib/lock.js";
 import { readMcpJson, writeMcpJson } from "../lib/translate.js";
@@ -65,7 +66,7 @@ export function installCommand(cwd: string, spec: string): void {
       console.error(`Error: ${AGENTIC_DIR}/ already has content that differs from the harness:`);
       for (const c of conflicts) console.error(`  - ${c}`);
       console.error(
-        "\nNothing was written. Move project-specific content into PROJECT.md / project/ (or unprefixed skills), remove the rest, and retry."
+        `\nNothing was written. Move project-specific content into ${PROJECT_RULES} (or unprefixed skills), remove the rest, and retry.`
       );
       process.exit(1);
     }
@@ -85,9 +86,11 @@ export function installCommand(cwd: string, spec: string): void {
       fs.copyFileSync(path.join(resolved.dir, rel), dest);
       seeded.push(rel);
     }
-    if (!fs.existsSync(path.join(agenticDir, "PROJECT.md"))) {
-      fs.writeFileSync(path.join(agenticDir, "PROJECT.md"), PROJECT_STUB);
-      seeded.push("PROJECT.md (empty stub)");
+    const projectRules = path.join(agenticDir, PROJECT_RULES);
+    if (!fs.existsSync(projectRules)) {
+      fs.mkdirSync(path.dirname(projectRules), { recursive: true });
+      fs.writeFileSync(projectRules, PROJECT_STUB);
+      seeded.push(`${PROJECT_RULES} (empty stub)`);
     }
 
     for (const [key, entry] of Object.entries(harnessMcp.mcpServers)) {

@@ -18,10 +18,11 @@ export interface PlatformMapping {
   /** Prefix for an import line. */
   importPrefix: string;
   /**
-   * Auto-loaded rules directory (per-file links), or null when unverified —
-   * in which case rules/ and project/ files are folded into the root file.
+   * Where v1.0 linked rules/ and project/ files one by one. Rules now load
+   * through the root file only; `link` and `unlink` prune any link into
+   * .agentic/ still found here and leave real files alone.
    */
-  rulesDir: string | null;
+  legacyRulesDir?: string;
   /** Per-directory skill links go here. */
   skillsDir: string;
   /**
@@ -50,7 +51,7 @@ export const PLATFORMS: Record<PlatformId, PlatformMapping> = {
     rulesRoot: "CLAUDE.md",
     rulesRootMode: "import",
     importPrefix: "@",
-    rulesDir: ".claude/rules",
+    legacyRulesDir: ".claude/rules",
     skillsDir: ".claude/skills",
     agentsDir: ".claude/agents",
     agentsMode: "link",
@@ -59,13 +60,14 @@ export const PLATFORMS: Record<PlatformId, PlatformMapping> = {
     gitignoreEntries: [".claude/settings.local.json", ".claude/worktrees/"],
   },
   // Antigravity CLI (`agy`, successor to Gemini CLI). Reads AGENTS.md and
-  // .agents/skills like Codex, so the two platforms share those files.
+  // .agents/skills like Codex, so the two platforms share those files. It
+  // follows no `@` import from AGENTS.md and does not load .agents/rules/
+  // (tested 2026-09-03, print mode), so the rules are inlined.
   antigravity: {
     configDir: ".agents",
     rulesRoot: "AGENTS.md",
     rulesRootMode: "concat",
     importPrefix: "@",
-    rulesDir: null,
     skillsDir: ".agents/skills",
     agentsDir: ".agents/agents",
     agentsMode: "link-dir",
@@ -78,7 +80,6 @@ export const PLATFORMS: Record<PlatformId, PlatformMapping> = {
     rulesRoot: "AGENTS.md",
     rulesRootMode: "concat",
     importPrefix: "@",
-    rulesDir: null,
     skillsDir: ".agents/skills",
     agentsDir: ".codex/agents",
     agentsMode: "translate",
@@ -109,7 +110,5 @@ export function requireAgenticDir(cwd: string): void {
  */
 export function platformPaths(platform: PlatformId): string[] {
   const m = PLATFORMS[platform];
-  return [m.rulesRoot, m.rulesDir, m.skillsDir, m.agentsDir, m.mcp.target].filter(
-    (p): p is string => p !== null
-  );
+  return [m.rulesRoot, m.skillsDir, m.agentsDir, m.mcp.target];
 }

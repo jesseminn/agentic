@@ -29,24 +29,24 @@ An *agentic harness* is a git repo or directory with the standard shape in §3. 
 
 ```
 harness.json            name, version
-RULES.md                behavior rules (short map file)
-rules/<name>.md         topic rules, loaded alongside RULES.md
-PROJECT.md              project-context seed (template)
-project/<name>.md       project topic-rule seeds (templates)
+rules/COMMON.md         who the agent is — role, goal, style, team conventions; shared across projects
+rules/PROJECT.md        the project's own context — goal, structure, stack; a seed template
 references/<name>.md    workflow docs that skills cite
 skills/<name>/SKILL.md  Agent Skills format; a namespace prefix keeps harness skills clear of platform built-ins
 agents/<name>.md        subagents, markdown + frontmatter (lowest-common-denominator fields: name, description, body)
 mcps.json               MCP servers; env vars by ${NAME} reference only, never literal secrets
 ```
 
+`rules/` holds exactly those two files. A rule is loaded into every session on every platform, so it is the place for what the agent *is*, kept short. Anything procedural — how to test, release, review — is a skill: every platform loads a skill's name and description only, and its body on demand.
+
 Two ownership tiers inside the shape:
 
 | tier | paths | after install |
 |---|---|---|
-| harness-owned | `RULES.md`, `rules/`, `references/`, `skills/`, `agents/`, `mcps.json` entries | recorded in the lock; overwritten by `update` |
-| seed-once | `PROJECT.md`, `project/` | copied if absent; never recorded; never touched again |
+| harness-owned | `rules/COMMON.md`, `references/`, `skills/`, `agents/`, `mcps.json` entries | recorded in the lock; overwritten by `update` |
+| seed-once | `rules/PROJECT.md` | copied if absent; never recorded; never touched again |
 
-If the harness ships no `PROJECT.md`, `install` creates an empty stub. The slot always exists because `link` always imports it.
+Ownership is per file, so the two rules files share a directory without sharing an owner; `status` reports `rules/ 2 (1 harness, 1 project)`. If the harness ships no `rules/PROJECT.md`, `install` creates an empty stub. The slot always exists because `link` always loads it.
 
 **Not part of a harness:**
 
@@ -62,22 +62,18 @@ If the harness ships no `PROJECT.md`, `install` creates an empty stub. The slot 
 project/
 ├── .agentic/
 │   ├── agentic.lock              ownership + provenance (§5)
-│   ├── RULES.md                  harness
-│   ├── rules/                    mixed — lock decides per file
-│   ├── PROJECT.md                project (seeded once)
-│   ├── project/                  project (seeded once)
+│   ├── rules/
+│   │   ├── COMMON.md             harness
+│   │   └── PROJECT.md            project (seeded once)
 │   ├── references/               mixed
 │   ├── skills/
 │   │   ├── commit/               harness
 │   │   └── my-skill/             project, cross-platform
 │   ├── agents/                   mixed
 │   └── .mcp.json                 mixed — lock decides per server key
-├── CLAUDE.md                     generated:  @.agentic/RULES.md  @.agentic/PROJECT.md
+├── CLAUDE.md                     generated:  @.agentic/rules/COMMON.md  @.agentic/rules/PROJECT.md
 ├── .mcp.json → .agentic/.mcp.json
 └── .claude/
-    ├── rules/
-    │   ├── foo.md → ../../.agentic/rules/foo.md
-    │   └── bar.md → ../../.agentic/project/bar.md
     ├── skills/
     │   ├── commit → ../../.agentic/skills/commit
     │   ├── my-skill → ../../.agentic/skills/my-skill
@@ -106,8 +102,7 @@ Ownership is recorded, not inferred. `install` writes the lock; `update` reads a
     "installedAt": "2026-09-02"
   },
   "files": {
-    "RULES.md": "sha256:…",
-    "rules/testing.md": "sha256:…",
+    "rules/COMMON.md": "sha256:…",
     "references/release-and-rollback.md": "sha256:…",
     "skills/commit/SKILL.md": "sha256:…",
     "agents/reviewer.md": "sha256:…"
@@ -134,7 +129,7 @@ The lock is committed. A test pull from a local checkout is just uncommitted wor
 
 1. Fetch the harness. Validate `harness.json` and the shape.
 2. Compare every harness-owned path with the local tree. A path that already exists with **different** content is a conflict: report all of them and abort with nothing written. Identical content is adopted — this is how a v0.2 project migrates.
-3. Copy harness-owned files. Copy seed-once files only where absent; create an empty `PROJECT.md` if the harness has none.
+3. Copy harness-owned files. Copy seed-once files only where absent; create an empty `rules/PROJECT.md` if the harness has none.
 4. Merge `mcps.json` entries into `.agentic/.mcp.json` (same conflict rule per key).
 5. Write the lock. Re-run `link` for any platform already recorded.
 
@@ -160,7 +155,7 @@ A skipped conflict keeps its old lock entry, so it surfaces again on every `upda
 
 Then rewrite the lock, and re-run `link` for every platform in `platforms` so new skills get links and removed ones get pruned.
 
-Conflicts print as a list and the command exits non-zero, so a CI job notices. `--force` takes the upstream side for every conflict. Resolving a conflict any other way is the user's job: keep the local edit (move it to `PROJECT.md`/`project/` or a project skill), revert it, or open a PR against the harness. No tool or skill is needed for that.
+Conflicts print as a list and the command exits non-zero, so a CI job notices. `--force` takes the upstream side for every conflict. Resolving a conflict any other way is the user's job: keep the local edit (move it to `rules/PROJECT.md` or a project skill), revert it, or open a PR against the harness. No tool or skill is needed for that.
 
 ### `agentic uninstall`
 
@@ -174,8 +169,7 @@ Idempotent. Derives from both tiers of `.agentic/`, reconciles against what is a
 
 | harness part | Claude Code | Antigravity CLI | Codex CLI |
 |---|---|---|---|
-| rules root | `CLAUDE.md`, generated: `@.agentic/RULES.md` + `@.agentic/PROJECT.md` | `AGENTS.md`, generated, concatenated | `AGENTS.md` — the same file |
-| `rules/`, `project/` | per-file links in `.claude/rules/` | concatenated into `AGENTS.md` | concatenated into `AGENTS.md` |
+| `rules/` | `CLAUDE.md`, generated: `@.agentic/rules/COMMON.md` + `@.agentic/rules/PROJECT.md` | `AGENTS.md`, generated: both inlined, COMMON first | `AGENTS.md` — the same file |
 | `skills/` | per-directory links in `.claude/skills/` | per-directory links in `.agents/skills/` | the same directory |
 | `agents/` | per-file links `.claude/agents/<name>.md` | per-file links `.agents/agents/<name>/agent.md` | generated `.codex/agents/<name>.toml` |
 | `.mcp.json` | symlink `.mcp.json` | `mcpServers` key written into `.agents/mcp_config.json` | generated `.codex/config.toml` |
@@ -189,7 +183,7 @@ Reconciliation rules for every linked directory:
 3. Never touch an entry that is not a symlink into `.agentic/`. That is the project's platform-specific content.
 4. A source entry whose target name is taken by a real file or directory is a conflict. Report; do not clobber.
 
-A v0.2 whole-directory symlink (`.claude/skills → ../.agentic/skills`) or whole-file symlink (`CLAUDE.md → .agentic/RULES.md`) is recognized by its target and replaced.
+A v0.2 whole-directory symlink (`.claude/skills → ../.agentic/skills`) or whole-file symlink (`CLAUDE.md → .agentic/RULES.md`) is recognized by its target and replaced. A v1.0 per-file rule link under `.claude/rules/` is pruned; a real file there is the project's own and is left alone.
 
 Generated files (`CLAUDE.md`, `AGENTS.md`, `.codex/*`) carry a first-line header marking them as generated by agentic. `link` only overwrites a file that carries the header; a real file at that path is a conflict. `.agents/mcp_config.json` is JSON and cannot carry a header, so it is treated as a merge target: agentic owns only its `mcpServers` key.
 
@@ -203,11 +197,11 @@ Remove the links, generated files, and merged keys that `link` created — excep
 
 ### `agentic status`
 
-Report: harness name, version, commit, source; harness drift (lock-listed files or MCP keys that were edited or deleted locally); a content summary with harness/project counts; per linked platform, a dry-run `link` showing what is stale or conflicting. Exits non-zero on any drift, so it gates CI.
+Report: harness name, version, commit, source; harness drift (lock-listed files or MCP keys that were edited or deleted locally); a content summary with harness/project counts; per linked platform, a dry-run `link` showing what is stale or conflicting. Exits non-zero on any drift, so it gates CI. Also warns — without failing — when `rules/COMMON.md` + `rules/PROJECT.md` exceed 200 lines, the size past which Claude Code documents an adherence drop.
 
 ### `agentic init`
 
-Create a bare `.agentic/` (stub `RULES.md`, stub `PROJECT.md`, the standard dirs, empty `.mcp.json`, empty lock) for a project that links without a harness. Note that its `RULES.md` stub will conflict with a later `install` — that is intended: move those rules into `PROJECT.md` first.
+Create a bare `.agentic/` (stub `rules/COMMON.md`, stub `rules/PROJECT.md`, the standard dirs, empty `.mcp.json`, empty lock) for a project that links without a harness. Note that its `rules/COMMON.md` stub will conflict with a later `install` — that is intended: move those rules into `rules/PROJECT.md` first.
 
 ### Kept from v0.2
 
@@ -232,9 +226,11 @@ Everything else in the project belongs to the user. `install`, `update`, `uninst
 
 **Per-entry links.** The only way a project can hold a platform-specific skill next to shared ones. Cost: reconciliation logic in `link` (§6). Worth it.
 
-**Generated rules root, not symlink + import.** With `PROJECT.md` a second source, the root file needs two imports. Putting `@PROJECT.md` inside `RULES.md` and keeping the symlink was rejected: whether the client resolves a relative `@path` against the symlink's location or the real file's location was not tested, and a wrong guess silently drops project rules.
+**Two rules files, no topic rules.** v1.0 had `RULES.md` + `rules/<topic>.md` + `PROJECT.md` + `project/<topic>.md`, with the topic files linked one by one into `.claude/rules/`. Tested against each client on 2026-09-03: Claude Code expands `@` imports at launch — its docs say imports "help organization but don't reduce context" — and lazy-loads only a `.claude/rules/` file that carries `paths:` frontmatter; Codex CLI and Antigravity CLI follow neither an `@` import nor a markdown link from `AGENTS.md`; Antigravity CLI does not load `.agents/rules/` at all (a real file there was as invisible as a symlink). So a topic rule is always-on on two of three platforms, and could be lazy on the third only with path scoping the harness format never had. Skills are lazy everywhere. Collapsing to `COMMON.md` (harness: who the agent is) and `PROJECT.md` (project: its context) makes the ownership boundary the content boundary and pushes everything procedural into skills. The root file carries COMMON then PROJECT, because every client gives later content precedence, so a project can override a harness default. `status` warns past 200 lines — Claude Code's documented adherence cliff.
 
-**Antigravity uses the concatenated `AGENTS.md`, not `.agents/rules/`.** Antigravity does auto-load plain markdown from `.agents/rules/` (verified in its docs), but it shares `AGENTS.md` with Codex, and Codex has no rules directory, so the rules must be inlined in `AGENTS.md` anyway. Linking them into `.agents/rules/` as well would load every rule twice. One concatenated file for both platforms is simpler and identical for both. Cost: Antigravity's per-file 12,000-character limit applies to the whole `AGENTS.md`, if it applies to that file at all — unverified.
+**Generated rules root, not symlink + import.** With `rules/PROJECT.md` a second source, the root file needs two imports. Putting `@PROJECT.md` inside `COMMON.md` and keeping a symlink was rejected: whether the client resolves a relative `@path` against the symlink's location or the real file's location was not tested, and a wrong guess silently drops project rules. Claude keeps the `@` form even though it saves no context: an import cannot drift, where `AGENTS.md` is a copy that `status` has to catch.
+
+**Antigravity gets the concatenated `AGENTS.md`.** Antigravity's docs list `.agents/rules/` as a rules location, but the CLI does not load it in print mode (tested 2026-09-03), and Codex has no rules directory at all. Both read `AGENTS.md`, so one concatenated file serves both. Nested `AGENTS.md` files do load — the CLI walks from the cwd up to the repository root — but that scopes rules by launch directory, not by file, and the harness has no directory-scoped rule to emit. Cost: Antigravity's per-file 12,000-character limit applies to the whole `AGENTS.md`, if it applies to that file at all — unverified.
 
 **Antigravity agents at `<name>/agent.md`.** The official CLI docs give `{workspace}/.agents/agents/{agent_name}/agent.md`; a flat `<name>.md` is reported by secondary sources only. The documented form is used. The harness agent format (frontmatter `name`, `description`, body prompt) matches Antigravity's documented minimal example; Antigravity's extra fields (`subagent`, `mainAgent`, `tools`, …) are optional and not part of the harness shape.
 
@@ -252,12 +248,22 @@ Everything else in the project belongs to the user. `install`, `update`, `uninst
 
 **Drop Gemini CLI rather than keep it as legacy.** Individual accounts can no longer run it, so a Gemini mapping would be untested code. The open-source project is still releasing and enterprise licenses still work; if that becomes relevant, the v0.2 mapping is one commit back in history and shares no paths with Antigravity. Old locks that list `gemini` still load; the id is dropped with a warning.
 
-## 9. Migration from v0.2 projects
+## 9. Migration
+
+### From v1.0
+
+The shape changed: `RULES.md` → `rules/COMMON.md`, `PROJECT.md` → `rules/PROJECT.md`; `rules/<topic>.md` and `project/<topic>.md` are gone. `validateHarness` rejects the old paths in a harness, and `link` reports them in a project as conflicts, each with this hint.
+
+1. Harness repo: `git mv RULES.md rules/COMMON.md` and `git mv PROJECT.md rules/PROJECT.md`. Fold each `rules/<topic>.md` and `project/<topic>.md` into one of the two, or turn it into a skill. Bump `harness.json`.
+2. Each project: `agentic update`. The lock moves from `RULES.md` to `rules/COMMON.md` and drops the topic files. The project's own `PROJECT.md` and `project/` are not the tool's to move — `git mv` them into `rules/` by hand. A project with no harness (`init`) makes the same moves by hand.
+3. `agentic link <platform>` for each linked platform. v1.0 links under `.claude/rules/` are pruned; `AGENTS.md` is regenerated. Commit.
+
+### From v0.2
 
 Because `install` adopts identical content and `link` recognizes v0.2 symlinks, migration is mostly running the tool:
 
 1. Add `harness.json` to the harness repo and move `references/` cross-references to root-relative paths.
-2. In the project, `agentic install <harness>`. Any file the project hand-edited shows up as a conflict — move that content to `PROJECT.md`/`project/` or a project skill, then retry.
+2. In the project, `agentic install <harness>`. Any file the project hand-edited shows up as a conflict — move that content to `rules/PROJECT.md` or a project skill, then retry.
 3. `agentic link claude`. The whole-directory symlinks and the old gitignore block are replaced.
 4. `git add -A` — the per-entry symlinks and generated `CLAUDE.md` are now tracked. Commit.
 5. Delete any manifest file or sync skill the v0.2 harness carried.
@@ -265,10 +271,10 @@ Because `install` adopts identical content and `link` recognizes v0.2 symlinks, 
 
 ## 10. Unverified
 
-- Whether the Antigravity **CLI** (as opposed to the IDE) auto-loads `.agents/rules/`, and whether the 12,000-character rules-file limit applies to `AGENTS.md`. Neither matters while rules are concatenated into `AGENTS.md`.
+- Whether the 12,000-character rules-file limit applies to `AGENTS.md`. (Resolved 2026-09-03 for the CLI in print mode: `.agents/rules/` is not loaded; `@` imports in `AGENTS.md` are not followed; nested `AGENTS.md` files load from the cwd up to the repository root. Interactive and IDE behavior not tested.)
 - Whether Antigravity accepts `.agents/agents/<name>.md` as well as `<name>/agent.md`. The documented `<name>/agent.md` form is used.
 - Whether a harness agent with only `name`/`description` frontmatter is offered as a subagent by Antigravity without `subagent: true`.
 - `${NAME}` expansion in Codex `config.toml` MCP `env` tables and in Antigravity `mcp_config.json`.
 - The bare bin name `agentic` may collide with another globally installed package on a developer's PATH. The package is installed from GitHub, so the npm registry name is not at stake.
 
-Sources consulted for Antigravity: the official CLI migration guide (`.agents/mcp_config.json`, `.agents/skills/`, `AGENTS.md` + `GEMINI.md` both read), the official `/agents` command docs (`.agents/agents/{name}/agent.md`, frontmatter `name`/`description`), the official rules docs (`.agents/rules`, plain markdown, 12,000-character cap), and the `antigravity-cli` changelog (1.1.6 markdown agents; 1.1.16 user-level `mcp_config.json`).
+Sources consulted for Antigravity: the official CLI migration guide (`.agents/mcp_config.json`, `.agents/skills/`, `AGENTS.md` + `GEMINI.md` both read), the official `/agents` command docs (`.agents/agents/{name}/agent.md`, frontmatter `name`/`description`), the official rules docs (`.agents/rules`, plain markdown, 12,000-character cap), and the `antigravity-cli` changelog (1.1.6 markdown agents; 1.1.16 user-level `mcp_config.json`). Loading behavior was tested directly on 2026-09-03 with `agy --new-project -p` against fixture files carrying unique codewords.

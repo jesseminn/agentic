@@ -8,21 +8,32 @@ import { readMcpJson, type McpConfig } from "./translate.js";
  * The standard shape of an agentic harness. See docs/design-v1.md §3.
  *
  *   harness.json            name, version
- *   RULES.md                harness-owned
- *   rules/<name>.md         harness-owned
+ *   rules/COMMON.md         harness-owned — who the agent is: role, style, conventions
+ *   rules/PROJECT.md        seed-once — the project's own context
  *   references/<name>.md    harness-owned
  *   skills/<name>/SKILL.md  harness-owned
  *   agents/<name>.md        harness-owned
  *   mcps.json               harness-owned entries (merged by key)
- *   PROJECT.md              seed-once
- *   project/<name>.md       seed-once
+ *
+ * rules/ holds exactly those two files. A rule is loaded into every session
+ * on every platform; anything procedural belongs in a skill, which every
+ * platform loads on demand.
  */
 export const HARNESS_META = "harness.json";
 export const HARNESS_MCP = "mcps.json";
-export const OWNED_FILES = ["RULES.md"] as const;
-export const OWNED_DIRS = ["rules", "references", "skills", "agents"] as const;
-export const SEED_FILES = ["PROJECT.md"] as const;
-export const SEED_DIRS = ["project"] as const;
+export const RULES_DIR = "rules";
+export const COMMON_RULES = "rules/COMMON.md";
+export const PROJECT_RULES = "rules/PROJECT.md";
+export const OWNED_FILES = [COMMON_RULES] as const;
+export const OWNED_DIRS = ["references", "skills", "agents"] as const;
+export const SEED_FILES = [PROJECT_RULES] as const;
+/** Top-level dirs every .agentic/ has. `update` and `uninstall` never prune them. */
+export const STANDARD_DIRS = [RULES_DIR, ...OWNED_DIRS] as const;
+/** The v1.0 shape. Rejected in a harness; reported by `link` in a project. */
+export const LEGACY_PATHS = ["RULES.md", "PROJECT.md", "project"] as const;
+export const LEGACY_HINT =
+  "move RULES.md to rules/COMMON.md and PROJECT.md to rules/PROJECT.md; fold rules/*.md and project/*.md into them or into skills (docs/design-v1.md §9)";
+export const RULES_ONLY_HINT = "rules/ holds only COMMON.md and PROJECT.md — fold it into one of them, or make it a skill";
 
 export interface HarnessMeta {
   name: string;
@@ -141,7 +152,11 @@ export function validateHarness(dir: string): HarnessMeta {
     }
   }
 
-  if (!fs.existsSync(path.join(dir, "RULES.md"))) problems.push("missing RULES.md");
+  if (!fs.existsSync(path.join(dir, COMMON_RULES))) problems.push(`missing ${COMMON_RULES}`);
+  for (const legacy of LEGACY_PATHS) {
+    if (fs.existsSync(path.join(dir, legacy))) problems.push(`${legacy} is the v1.0 shape — ${LEGACY_HINT}`);
+  }
+  for (const extra of extraRulesFiles(dir)) problems.push(`rules/${extra}: ${RULES_ONLY_HINT}`);
 
   const skillsDir = path.join(dir, "skills");
   if (fs.existsSync(skillsDir)) {
@@ -182,10 +197,18 @@ export function listSeedFiles(dir: string): string[] {
   for (const f of SEED_FILES) {
     if (fs.existsSync(path.join(dir, f))) out.push(f);
   }
-  for (const d of SEED_DIRS) {
-    walk(path.join(dir, d), (abs) => out.push(path.relative(dir, abs)));
-  }
   return out.sort();
+}
+
+/** Entries in rules/ other than COMMON.md and PROJECT.md (dotfiles ignored). */
+export function extraRulesFiles(root: string): string[] {
+  const dir = path.join(root, RULES_DIR);
+  if (!fs.existsSync(dir)) return [];
+  const keep = new Set([path.basename(COMMON_RULES), path.basename(PROJECT_RULES)]);
+  return fs
+    .readdirSync(dir)
+    .filter((n) => !n.startsWith(".") && !keep.has(n))
+    .sort();
 }
 
 export function readHarnessMcp(dir: string): McpConfig {

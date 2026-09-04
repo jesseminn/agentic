@@ -3,7 +3,8 @@ import * as path from "node:path";
 import { getAgenticDir, requireAgenticDir } from "../lib/platforms.js";
 import { readLock, hashFile, hashJson } from "../lib/lock.js";
 import { readMcpJson } from "../lib/translate.js";
-import { linkPlatform } from "../lib/linker.js";
+import { linkPlatform, rulesLineCount, RULES_LINE_BUDGET } from "../lib/linker.js";
+import { COMMON_RULES, PROJECT_RULES } from "../lib/harness.js";
 
 /**
  * Report harness, linked platforms, and drift. Exits non-zero on any drift
@@ -52,8 +53,7 @@ export function statusCommand(cwd: string): void {
   const owned = Object.keys(lock?.files ?? {});
   const ownedSet = new Set(owned);
   const ownedMcp = new Set(Object.keys(lock?.mcpServers ?? {}));
-  const rules = listFiles(path.join(agenticDir, "rules"), ".md");
-  const project = listFiles(path.join(agenticDir, "project"), ".md");
+  const rules = [COMMON_RULES, PROJECT_RULES].filter((r) => fs.existsSync(path.join(agenticDir, r)));
   const skills = listDirs(path.join(agenticDir, "skills"));
   const agents = listFiles(path.join(agenticDir, "agents"), ".md");
   const mcpKeys = Object.keys(mcp.mcpServers);
@@ -63,11 +63,18 @@ export function statusCommand(cwd: string): void {
     return `${items.length} (${h} harness, ${items.length - h} project)`;
   };
   console.log(`\nContent:`);
-  console.log(`  rules/     ${split(rules, (n) => ownedSet.has(`rules/${n}`))}`);
-  console.log(`  project/   ${project.length}`);
+  console.log(`  rules/     ${split(rules, (r) => ownedSet.has(r))}`);
   console.log(`  skills/    ${split(skills, (n) => owned.some((f) => f.startsWith(`skills/${n}/`)))}`);
   console.log(`  agents/    ${split(agents, (n) => ownedSet.has(`agents/${n}`))}`);
   console.log(`  MCP        ${split(mcpKeys, (k) => ownedMcp.has(k))}`);
+
+  // Advice, not drift: every client loads both files into every session.
+  const lines = rulesLineCount(cwd);
+  if (lines > RULES_LINE_BUDGET) {
+    console.log(
+      `\nWarning: ${COMMON_RULES} + ${PROJECT_RULES} total ${lines} lines — over ${RULES_LINE_BUDGET}. Every platform loads both into every session, and adherence drops past this size. Move procedure into skills; they load on demand.`
+    );
+  }
 
   // --- platforms: dry-run link to find derived drift ---
   const platforms = lock?.platforms ?? [];

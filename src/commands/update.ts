@@ -1,7 +1,7 @@
 import * as fs from "node:fs";
 import * as path from "node:path";
 import { getAgenticDir } from "../lib/platforms.js";
-import { listOwnedFiles, readHarnessMcp, OWNED_DIRS } from "../lib/harness.js";
+import { listOwnedFiles, readHarnessMcp, STANDARD_DIRS, PROJECT_RULES } from "../lib/harness.js";
 import { requireHarness, writeLock, hashFile, hashJson } from "../lib/lock.js";
 import { readMcpJson, writeMcpJson } from "../lib/translate.js";
 import { linkPlatform, removeIfEmpty } from "../lib/linker.js";
@@ -236,7 +236,7 @@ export function updateCommand(
       }
       if (!opts.force) {
         console.log(
-          "\nResolve each one — keep the local edit (move it to PROJECT.md/project/ or an unprefixed skill), revert it, or open a PR against the harness — then re-run. `--force` takes the upstream side."
+          `\nResolve each one — keep the local edit (move it to ${PROJECT_RULES} or an unprefixed skill), revert it, or open a PR against the harness — then re-run. \`--force\` takes the upstream side.`
         );
         process.exit(1);
       }
@@ -256,7 +256,7 @@ function printList(label: string, items: string[]): void {
 export function pruneEmptyDirs(agenticDir: string, rel: string): void {
   let cur = rel;
   while (cur && cur !== ".") {
-    if ((OWNED_DIRS as readonly string[]).includes(cur)) break;
+    if ((STANDARD_DIRS as readonly string[]).includes(cur)) break;
     removeIfEmpty(path.join(agenticDir, cur));
     cur = path.dirname(cur);
   }

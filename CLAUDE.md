@@ -14,16 +14,16 @@ The tool touches only:
 - inside `.agentic/`: paths listed in the lock (`files`) and MCP keys listed in the lock (`mcpServers`);
 - inside platform dirs: symlinks that point into `.agentic/`, files carrying the generated header (`lib/generated.ts`), and the `mcpServers` key of a merge target.
 
-Everything else belongs to the user. Never add a code path that writes outside this set. `PROJECT.md` and `project/` are seeded once and never recorded, so `update` cannot see them.
+Everything else belongs to the user. Never add a code path that writes outside this set. `rules/PROJECT.md` is seeded once and never recorded, so `update` cannot see it.
 
 ## Harness shape (`lib/harness.ts`)
 
 ```
-harness.json  RULES.md  rules/  references/  skills/*/SKILL.md  agents/  mcps.json   ← harness-owned
-PROJECT.md  project/                                                                ← seed-once
+harness.json  rules/COMMON.md  references/  skills/*/SKILL.md  agents/  mcps.json   ← harness-owned
+rules/PROJECT.md                                                                     ← seed-once
 ```
 
-`validateHarness` rejects a missing `harness.json`/`RULES.md`, a skill dir without `SKILL.md`, and any literal MCP env value (must be `${NAME}`).
+`rules/` holds exactly those two files; ownership is per file, not per directory. A rule loads into every session on every platform, so anything procedural is a skill. `validateHarness` rejects a missing `harness.json`/`rules/COMMON.md`, the v1.0 paths (`RULES.md`, `PROJECT.md`, `project/`), any other file in `rules/`, a skill dir without `SKILL.md`, and any literal MCP env value (must be `${NAME}`).
 
 ## Update algorithm (`commands/update.ts`)
 
@@ -48,13 +48,15 @@ Per platform (`lib/platforms.ts` mapping):
 | | Claude Code | Antigravity CLI | Codex CLI |
 |---|---|---|---|
 | root | `CLAUDE.md`, `import` mode (`@` lines) | `AGENTS.md`, `concat` | `AGENTS.md`, `concat` (same file) |
-| rules/ + project/ | per-file links in `.claude/rules/` | inlined in root | inlined in root |
+| rules/ | both `@`-imported by the root | both inlined, COMMON then PROJECT | same file |
 | skills/ | `.claude/skills/<name>` links | `.agents/skills/<name>` links | same dir |
 | agents/ | `.claude/agents/<name>.md` links (`link`) | `.agents/agents/<name>/agent.md` links (`link-dir`) | `.codex/agents/*.toml` (`translate`) |
 | MCP | symlink `.mcp.json` | merge `mcpServers` into `.agents/mcp_config.json` | translate to `.codex/config.toml` |
 | gitignore | `settings.local.json`, `worktrees/` | none | none |
 
 - Root file is always generated with the header. A v0.2 symlink into `.agentic/` is replaced; a real non-generated file is a conflict.
+- `.claude/rules/` is not written any more. A link into `.agentic/` found there (v1.0) is pruned by `link` and `unlink`; a real file there is the project's own and is left alone.
+- `status` warns, exit 0, when `rules/COMMON.md` + `rules/PROJECT.md` exceed `RULES_LINE_BUDGET` (200 lines).
 - `reconcileLinks` / `reconcileLinkDirs` rules: add missing; remove dangling or undesired links into `.agentic/`; never touch anything else; a real entry in the way is a conflict.
 - **Shared paths**: Antigravity and Codex both own `AGENTS.md` and `.agents/skills/`. `unlinkPlatform` skips any path in `platformPaths()` of another platform still in `lock.platforms`.
 - `linkPlatform(cwd, p, { apply: false })` is the dry run `status` uses. `linkMcp` re-derives only MCP (used by `mcp add/remove`).
