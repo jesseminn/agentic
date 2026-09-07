@@ -713,6 +713,23 @@ test("status warns, without failing, when the two rules files pass 200 lines", (
   assert.match(s.out, /over 200/);
 });
 
+test("migrate distinguishes a step that found nothing from no step at all", () => {
+  const project = freshProject("proj");
+  ok(project, "init");
+  ok(project, "link", "claude");
+
+  // protocol-1.0 lock, but the files are already in the 2.0.0 shape — what you get
+  // when the move was done by hand before migrating.
+  const l = lock(project);
+  delete l.protocol;
+  write(project, ".agentic/agentic.lock", JSON.stringify(l, null, 2) + "\n");
+  const out = ok(project, "migrate");
+  assert.match(out, /already in the new shape, nothing to move/);
+  assert.doesNotMatch(out, /no shape change between them/, "a MAJOR step did run");
+  assert.equal(lock(project).protocol, "2.0.0");
+  ok(project, "status");
+});
+
 test("--version names the protocol; a MINOR-behind lock is restamped, not migrated", () => {
   const project = freshProject("proj");
   ok(project, "init");

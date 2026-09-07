@@ -24,6 +24,8 @@ const STEPS: Step[] = [{ fromMajor: 1, run: from1to2 }];
 export interface MigrateResult {
   from: string;
   to: string;
+  /** How many MAJOR steps ran. Zero means the bump was MINOR or PATCH only. */
+  steps: number;
   lines: string[];
   links: LinkReport[];
 }
@@ -70,16 +72,18 @@ export function migrateProject(cwd: string): MigrateResult | null {
 
   const lock = existing ?? emptyLock();
   const lines: string[] = [];
+  let steps = 0;
   for (let m = majorOf(from); m < majorOf(CURRENT_PROTOCOL); m++) {
     const step = STEPS.find((s) => s.fromMajor === m);
     if (!step) throw new Error(`no migration from protocol major ${m}`);
     lines.push(...step.run(cwd, lock));
+    steps++;
   }
   lock.protocol = CURRENT_PROTOCOL;
   writeLock(cwd, lock);
 
   const links = lock.platforms.map((p) => linkPlatform(cwd, p));
-  return { from, to: CURRENT_PROTOCOL, lines, links };
+  return { from, to: CURRENT_PROTOCOL, steps, lines, links };
 }
 
 // --- steps ---
